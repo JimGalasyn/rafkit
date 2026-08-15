@@ -1,0 +1,58 @@
+cff-version: 1.2.0
+title: "rafkit: autocatalytic (RAF) sets in catalytic reaction networks"
+message: "If you use this software, please cite it using these metadata."
+type: software
+authors:
+  - given-names: James P.
+    family-names: Galasyn
+  - given-names: Claude
+    family-names: Théodore
+repository-code: "https://github.com/JimGalasyn/rafkit"
+url: "https://github.com/JimGalasyn/rafkit"
+abstract: >-
+  A dependency-light Python implementation of RAF theory (Hordijk & Steel 2004):
+  maximal RAFs, the strictly autocatalytic variant, irreducible-RAF sampling and
+  census, exploitability, and Kauffman's binary polymer model with optional
+  cleavage. Every algorithm carries hand-computed known-answer tests, and the
+  suite additionally checks maximal-RAF and strictly-autocatalytic results against
+  counts produced by CatReNet, the reference implementation, on a committed
+  fixture — so an independent implementation validates this one on every run with
+  no Java required. Reads and writes CatReNet's CRS interchange format.
+keywords:
+  - autocatalytic-sets
+  - RAF
+  - origin-of-life
+  - chemical-reaction-networks
+  - systems-chemistry
+  - binary-polymer-model
+  - catalysis
+  - abiogenesis
+license: MIT
+version: 0.1.0
+date-released: "2026-08-15"
+references:
+  - type: article
+    authors:
+      - family-names: Hordijk
+        given-names: Wim
+      - family-names: Steel
+        given-names: Mike
+    title: "Detecting autocatalytic, self-sustaining sets in chemical reaction systems"
+    journal: "Journal of Theoretical Biology"
+    volume: 227
+    start: 451
+    year: 2004
+  - type: article
+    authors:
+      - family-names: Huson
+        given-names: Daniel H.
+      - family-names: Xavier
+        given-names: Joana C.
+      - family-names: Steel
+        given-names: Mike A.
+    title: "CatReNet: interactive analysis of (auto-)catalytic reaction networks"
+    journal: "Bioinformatics"
+    volume: 40
+    issue: 8
+    year: 2024
+    doi: 10.1093/bioinformatics/btae515

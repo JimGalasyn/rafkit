@@ -1,0 +1,23 @@
+# Canonical identities for git log / shortlog / blame.
+#
+# Both lines are PRECAUTIONARY here: this repo is new, its history was extracted by
+# `git filter-repo` from a private repo, and every commit so far is authored and
+# committed as jim.galasyn@hotmail.com. They exist because of a measured behaviour in
+# the sibling repos, documented at length in run-farm's own .mailmap:
+#
+#   GitHub re-attributes any commit it composes on the account's behalf to the
+#   account's PRIMARY email (jim.galasyn@confluent.io) — squash merges AND ordinary
+#   merge commits, intermittently. Verified 2026-08-01 by comparing pre-squash branch
+#   authors with the squashed result across four repos.
+#
+# So the FIRST merged PR here, of either kind, is what would introduce a second author.
+# A local merge (`git merge --no-ff` then push) is authored from your own config and
+# avoids it, unless a ruleset demands code-scanning results for the pushed commit.
+#
+# Recompute counts after the fact, not before:
+#   git log --format='%an <%ae>' | sort | uniq -c
+#
+# Format: Proper Name <proper@email> <commit@email>
+
+Jim Galasyn <jim.galasyn@hotmail.com> <jim.galasyn@confluent.io>
+Jim Galasyn <jim.galasyn@hotmail.com> <jim.galasyn@hotmail.com>

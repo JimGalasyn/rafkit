@@ -1,5 +1,11 @@
 # rafkit
 
+[![CI](https://github.com/JimGalasyn/rafkit/actions/workflows/ci.yml/badge.svg)](https://github.com/JimGalasyn/rafkit/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/JimGalasyn/rafkit/branch/main/graph/badge.svg)](https://codecov.io/gh/JimGalasyn/rafkit)
+[![PyPI](https://img.shields.io/pypi/v/rafkit.svg)](https://pypi.org/project/rafkit/)
+[![Python](https://img.shields.io/pypi/pyversions/rafkit.svg)](https://pypi.org/project/rafkit/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Autocatalytic (RAF) sets in catalytic reaction networks — maximal RAFs, irreducible
 cores, Kauffman binary polymer models, and interoperability with
 [CatReNet](https://github.com/husonlab/catrenet).
@@ -98,9 +104,18 @@ count of anything biological.
 ## Install
 
 ```bash
-pip install -e ".[dev]"
+pip install rafkit
+```
+
+Development:
+
+```bash
+pip install -e ".[test]"
 pytest -q
 ```
+
+Releases are documented in [CHANGELOG.md](CHANGELOG.md); the release procedure is
+[docs/RELEASING.md](docs/RELEASING.md).
 
 ## References
 
