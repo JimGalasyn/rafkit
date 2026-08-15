@@ -30,6 +30,14 @@ keywords:
 license: MIT
 version: 0.1.0
 date-released: "2026-08-15"
+doi: 10.5281/zenodo.21954795
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.21954795
+    description: Concept DOI (resolves to the latest version)
+  - type: doi
+    value: 10.5281/zenodo.21954796
+    description: Version DOI (v0.1.0)
 references:
   - type: article
     authors:

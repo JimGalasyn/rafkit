@@ -5,6 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/rafkit.svg)](https://pypi.org/project/rafkit/)
 [![Python](https://img.shields.io/pypi/pyversions/rafkit.svg)](https://pypi.org/project/rafkit/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21954795.svg)](https://doi.org/10.5281/zenodo.21954795)
 
 Autocatalytic (RAF) sets in catalytic reaction networks — maximal RAFs, irreducible
 cores, Kauffman binary polymer models, and interoperability with
@@ -116,6 +117,13 @@ pytest -q
 
 Releases are documented in [CHANGELOG.md](CHANGELOG.md); the release procedure is
 [docs/RELEASING.md](docs/RELEASING.md).
+
+## Citing
+
+Cite the concept DOI [10.5281/zenodo.21954795](https://doi.org/10.5281/zenodo.21954795),
+which always resolves to the latest version; `CITATION.cff` also lists the per-version
+DOI. If you use the CatReNet interoperability or the validation fixture, please cite
+CatReNet too.
 
 ## References
 
