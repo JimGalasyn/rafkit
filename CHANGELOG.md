@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] — 2026-08-15
 
 ### Added
 
@@ -25,6 +25,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   polynomial test for a question that is otherwise hard.
 - **`catalytically_reachable`** — least fixpoint of what catalysed firings alone can
   make; everything outside it provably needs a spontaneous seeding event.
+- **`examples/hordijk_steel_2012_seeding.py`** — the reproduction end to end, on a
+  structural analogue of their network found at their published parameters (n=5, t=2,
+  p=0.0045): a maximal RAF of eight two-way reactions, the same size as theirs.
+
+### Maintenance
+
+- v0.1.0's concept and version DOIs recorded in `CITATION.cff` after minting.
 
 ### Validated against published worked examples
 
@@ -55,11 +62,6 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `{r1,r2}` confirmed as the only strictly autocatalytic one.
 - **The §2.4 system**: published maxRAF `{r1,r2,r5}` and unique iRAF `{r1,r2}`, with a
   test that the two empty-catalyst forms are not interchangeable.
-
-### Pending before release
-
-- An example reproducing Hordijk & Steel (2012) end to end. The code is in; the worked
-  script is not.
 
 ## [0.1.0] — 2026-08-15
 
