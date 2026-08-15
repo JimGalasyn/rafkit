@@ -34,8 +34,8 @@ import time
 
 import numpy as np
 
-from morphospace.chemistry import binary_polymer, max_raf
-from morphospace.chemistry.raf import (irrraf_census, is_food_catalysed,
+from rafkit import binary_polymer, max_raf
+from rafkit.raf import (irrraf_census, is_food_catalysed,
                                        max_raf_strict, sample_irrraf)
 
 

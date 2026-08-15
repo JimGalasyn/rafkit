@@ -1,0 +1,44 @@
+[project]
+name = "rafkit"
+version = "0.1.0"
+description = "Autocatalytic (RAF) sets in catalytic reaction networks: maximal RAFs, irreducible cores, and Kauffman binary polymer models."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [
+  { name = "James P. Galasyn" },
+  { name = "Claude Théodore" },
+]
+keywords = [
+  "autocatalytic-sets", "RAF", "origin-of-life", "chemical-reaction-networks",
+  "systems-chemistry", "binary-polymer-model", "catalysis", "abiogenesis",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Chemistry",
+  "Topic :: Scientific/Engineering :: Artificial Life",
+]
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.urls]
+Homepage = "https://github.com/jimgalasyn/rafkit"
+Issues = "https://github.com/jimgalasyn/rafkit/issues"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

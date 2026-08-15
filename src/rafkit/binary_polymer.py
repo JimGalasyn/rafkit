@@ -1,10 +1,8 @@
 """E4 — Kauffman's binary polymer model.
 
 The canonical setting for the closure phase transition (Kauffman 1986; Hordijk &
-Steel 2004). It is the substrate `DESIGN_abiogenesis.md` §6a's premise 1 was
-established in, which is why premise 2 must be measured here and not on E1:
-ReactionAtlas carries reactions with DFT barriers but **no catalysis relation**, and
-exploitability is defined through catalysis.
+Steel 2004), and the setting in which the closure phase transition is usually
+located.
 
 Molecules are binary strings of length 1..`max_len`. The food set is every string of
 length <= `food_len`. Reactions are **ligations** `a + b -> ab` for every ordered pair
@@ -24,14 +22,14 @@ in three of four seeds. The flaw in the argument is that a polymer has *many* sp
 `010`, which no catalysed ligation produces. Production and cleavage need not use the
 same split, so cleavage genuinely enlarges reachability.
 
-That makes cleavage the leading candidate for the transition discrepancy of
-`DESIGN_abiogenesis.md` §6b (published f ~ 1.20 against ~3 here): more reachable
-molecules means more catalysts in the closure, at any catalysis level.
+More reachable molecules means more catalysts in the closure at any catalysis level,
+so a ligation-only model sits at a markedly higher transition than a
+cleavage-ligation one. See the README for the measured comparison.
 
-It matters because the two published binary-polymer references both use
-cleavage-ligation chemistries: Steel, Hordijk & Smith (2012), against whose f ~ 1.20
-transition this model is uncalibrated, and Serra & Villani (2026), whose C-BPM is the
-comparison ensemble. See `DESIGN_abiogenesis.md` §6b and §6c.
+It matters because the published binary-polymer references use cleavage-ligation
+chemistries -- Steel, Hordijk & Smith (2012), whose f ~ 1.20 transition this model is
+calibrated against, and Serra & Villani (2026) -- so a ligation-only model cannot be
+compared to either without correction.
 
 Catalysis is assigned independently: each (molecule, reaction) pair is a catalysis
 edge with probability `p`. That uniform assignment is the model's defining
@@ -98,7 +96,7 @@ class BinaryPolymerNetwork:
         reaction. Reporting `mean_catalysed_per_molecule` against their f therefore
         double-counts a cleavage chemistry and lands 2x too high. This property is the
         comparable quantity; use it, and not `mean_catalysed_per_molecule`, whenever a
-        number is set beside theirs (`DESIGN_abiogenesis.md` §6b).
+        number is set beside theirs.
         """
         if not self.molecules:
             return 0.0

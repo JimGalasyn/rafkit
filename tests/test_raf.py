@@ -1,16 +1,16 @@
 """RAF closure, exploitability, and the E4 generator.
 
 The load-bearing tests are the hand-computed networks in `TestMaxRaf`: RAF is the
-predictor everything in `DESIGN_abiogenesis.md` §6 rests on, and a RAF algorithm that
-is subtly wrong produces plausible numbers rather than errors.
+predictor everything else is built on, and a RAF algorithm that is subtly wrong
+produces plausible numbers rather than errors.
 """
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from morphospace.chemistry.binary_polymer import BinaryPolymerNetwork, binary_polymer
-from morphospace.chemistry.raf import (
+from rafkit.binary_polymer import BinaryPolymerNetwork, binary_polymer
+from rafkit.raf import (
     _closure, _refine, exploitability, irrraf_census, is_food_catalysed, max_raf,
     max_raf_strict, sample_irrraf)
 
@@ -230,10 +230,8 @@ class TestSelfReferentialRaf:
 class TestCleavage:
     """Cleavage chemistry -- the direction-aware half of the RAF condition.
 
-    `DESIGN_abiogenesis.md` §6b names the omitted cleavage direction as prime suspect
-    for E4's uncalibrated transition, and both published binary-polymer references use
-    cleavage-ligation chemistries, so these are the tests that let E4 be compared to
-    them at all.
+    Both published binary-polymer references use cleavage-ligation chemistries, so
+    these are the tests that let this model be compared to them at all.
     """
 
     def test_generator_doubles_reactions_and_labels_directions(self):

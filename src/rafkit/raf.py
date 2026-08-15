@@ -6,15 +6,14 @@ producible from F using R' (reflexively autocatalytic), and every reactant is it
 producible from F using R' (F-generated). The maximal RAF is unique and is reached by
 iteratively discarding reactions that fail either condition.
 
-`exploitability` is the observable `DESIGN_abiogenesis.md` §6a adds, and it exists to
-test that section's load-bearing premise: **that exploiting closure is at least as
-generic as closure itself.** A molecule counts as an exploiter when the RAF produces
-it and it catalyses nothing in the RAF -- reproduced by the closed set's catalysts,
-contributing no catalysis back.
+`exploitability` measures how much of what a RAF produces contributes no catalysis
+back to it. A molecule counts as an exploiter when the RAF produces it and it
+catalyses nothing in the RAF -- reproduced by the closed set's catalysts, giving
+nothing to closure in return. It is a cheap, purely structural observable; it says
+nothing on its own about whether such a molecule could invade dynamically.
 
-That definition is one of several defensible ones and §6a flags the convention as
-needing to be fixed in advance, so it is fixed here as the PRIMARY and two variants
-are computed alongside it, reported but never substituted for it:
+Several definitions are defensible, so one is fixed here as the PRIMARY and two
+variants are computed alongside it, reported but never substituted for it:
 
 * `strict`   -- PRIMARY, as above.
 * `unused`   -- produced by the RAF, catalyses nothing in the RAF, **and** is not a
@@ -28,7 +27,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from morphospace.chemistry.binary_polymer import BinaryPolymerNetwork
+from rafkit.binary_polymer import BinaryPolymerNetwork
 
 
 @dataclass(frozen=True)
@@ -198,8 +197,7 @@ def sample_irrraf(net: BinaryPolymerNetwork, reactions: frozenset[int],
     **Prior art.** This is Steel, Hordijk & Smith, "Minimal autocatalytic networks"
     (arXiv:1212.4450, 2012), which describes the same remove-and-refine procedure and
     the same randomised re-ordering to sample. It was reinvented here on 2026-08-15
-    and the attribution added on discovery; see `DESIGN_abiogenesis.md` §6b. The same
-    paper proves there may be exponentially many irrRAFs and that finding the
+    and the attribution added on discovery. The same paper proves there may be exponentially many irrRAFs and that finding the
     smallest RAF is NP-hard, so a distinct-count that never saturates is the expected
     result rather than a surprising one.
     """
@@ -274,3 +272,29 @@ def is_food_catalysed(net: BinaryPolymerNetwork, core: frozenset[int]) -> bool:
     if not core:
         return False
     return all(net.catalysts[r] & net.food for r in core)
+
+
+def catrenet_strictly_autocatalytic(net, raf: RafResult | None = None) -> frozenset[int]:
+    """CatReNet's `strictlyAutocatalyticMaxRaf`, for cross-checking.
+
+    CatReNet documents this as "a Max RAF that has the additional property that any
+    contained reaction requires at least one molecule type for catalyzation that is
+    not in the food set". Reproduced here by **black-box behavioural inference** from
+    its published output on a generated network -- no CatReNet source was read, and
+    none could be used, since it is GPL v3 and this library is MIT.
+
+    The operation is a **filter on the maximal RAF, without re-refinement**: keep
+    every reaction having at least one non-food catalyst, and stop. That is *not* the
+    same as `max_raf_strict`, which imposes the same condition inside the fixpoint
+    and therefore returns a set that is itself a RAF. Dropping reactions can break
+    F-generation for the ones that remain, so this result need not be a RAF -- which
+    is exactly why it is offered for interoperability rather than for analysis.
+
+    On the committed CatReNet fixture: `max_raf` 183, this 175, `max_raf_strict` 161.
+    """
+    if raf is None:
+        raf = max_raf(net)
+    if raf.is_empty:
+        return frozenset()
+    pool = raf.closure - net.food
+    return frozenset(r for r in raf.reactions if net.catalysts[r] & pool)

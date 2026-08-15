@@ -1,17 +1,29 @@
-"""Chemistry observables and network generators for the abiogenesis layer.
+"""rafkit -- autocatalytic (RAF) sets in catalytic reaction networks.
 
-See `docs/DESIGN_abiogenesis.md` §10 for the intended layout. This package is the
-observables-and-statistics half; the chemistry itself lives in
-`morphospace/physics/protocell/`.
+A small, dependency-light implementation of RAF theory (Hordijk & Steel 2004):
+maximal RAFs, the self-referential ("strictly autocatalytic") variant, irreducible
+RAF sampling, and Kauffman's binary polymer model as a generator.
+
+Every algorithm here is written from the published papers and carries hand-computed
+known-answer tests, because a RAF algorithm that is subtly wrong produces plausible
+numbers rather than errors.
+
+See the README for the calibration against Steel, Hordijk & Smith (2012) and for
+CatReNet interoperability.
 """
-from morphospace.chemistry.binary_polymer import (
-    BinaryPolymerNetwork, binary_polymer,
-)
-from morphospace.chemistry.raf import (
-    RafResult, exploitability, irrraf_census, is_food_catalysed, max_raf,
-    max_raf_strict, sample_irrraf,
+from rafkit.binary_polymer import BinaryPolymerNetwork, binary_polymer
+from rafkit.crs import parse_crs, read_crs, to_crs, write_crs
+from rafkit.network import ReactionNetwork
+from rafkit.raf import (
+    RafResult, catrenet_strictly_autocatalytic, exploitability, irrraf_census,
+    is_food_catalysed, max_raf, max_raf_strict, sample_irrraf,
 )
 
-__all__ = ["BinaryPolymerNetwork", "binary_polymer", "RafResult", "max_raf",
-           "exploitability", "max_raf_strict", "sample_irrraf", "irrraf_census",
-           "is_food_catalysed"]
+__version__ = "0.1.0"
+
+__all__ = [
+    "BinaryPolymerNetwork", "binary_polymer", "ReactionNetwork",
+    "RafResult", "max_raf", "max_raf_strict", "sample_irrraf", "irrraf_census",
+    "exploitability", "is_food_catalysed", "catrenet_strictly_autocatalytic",
+    "parse_crs", "read_crs", "to_crs", "write_crs",
+]
