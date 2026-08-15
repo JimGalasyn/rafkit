@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Maintenance
+
+- v0.4.0's version DOI recorded in `CITATION.cff`.
+
 ## [0.4.0] — 2026-08-15
 
 ### Added — PNML export
