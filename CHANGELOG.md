@@ -3,6 +3,28 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **`simulate`** — Gillespie direct method over a catalytic reaction network, and the
+  reason it is here: a subRAF catalysed by its own products cannot start until that
+  product appears by an *uncatalysed* event, so a maximal RAF does not switch on, it
+  **assembles as an order-dependent sequence of rare seeding events**. The one non-unit
+  constant is the uncatalysed rate reduction factor, which is the mechanism under test.
+- `propensities` (mass-action with the correct `n(n-1)/2` self-pair factor) and
+  `Trajectory`, which records event-resolution first-appearance times, first firing, and
+  **first *uncatalysed* firing** — the seeding record.
+- `simulate(..., reactions=...)` restricts which reactions may fire. This is a fidelity
+  requirement rather than a convenience: the published experiment studies flow *on the
+  maximal RAF*, and simulating the whole generated network instead lets species arrive by
+  routes outside the set under study.
+
+### Pending before release
+
+- An example reproducing Hordijk & Steel (2012) end to end. The code is in; the worked
+  script is not.
+
 ## [0.1.0] — 2026-08-15
 
 First release. Extracted from a private research repository with history intact.

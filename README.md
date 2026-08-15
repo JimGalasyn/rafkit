@@ -85,6 +85,7 @@ counted as **one** catalysed reaction, not two. Use `net.catalysis_level` — no
 | `binary_polymer` | Kauffman binary polymer generator, with optional cleavage |
 | `ReactionNetwork` | arbitrary catalytic reaction systems, same protocol |
 | `read_crs` / `write_crs` | CatReNet's CRS interchange format |
+| `simulate` | Gillespie direct method — watch subRAFs seed themselves into existence |
 
 Every algorithm carries hand-computed known-answer tests, because a RAF algorithm that
 is subtly wrong produces plausible numbers rather than errors.
