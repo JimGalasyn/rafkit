@@ -40,6 +40,15 @@ First release. Extracted from a private research repository with history intact.
   convention are both applied — 0 seeds with a RAF at *f* ≤ 1.22, all seeds by
   *f* ≈ 1.59. Without them the transition sits at *f* ≈ 4.7.
 
+### Infrastructure
+
+- CI on Python 3.11/3.12/3.13 with coverage to Codecov; CodeQL on a weekly cron;
+  PyPI publishing by OIDC trusted publishing, guarded to tag refs only.
+- `CITATION.cff`, `.zenodo.json`, `codecov.yml`, `.mailmap`, and
+  [docs/RELEASING.md](docs/RELEASING.md) — the last carrying forward the release
+  failure modes already paid for in a sibling repository, rather than rediscovering
+  them here.
+
 ### Known divergence
 
 - `max_raf_strict` and CatReNet's `strictlyAutocatalyticMaxRaf` compute different
