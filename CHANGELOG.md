@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.4.0] — 2026-08-15
 
 ### Added — PNML export
 
@@ -14,6 +14,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - What P/T nets cannot express is reported rather than dropped: inhibition goes in a
   `toolspecific` annotation with an in-file warning that ignoring it yields a different
   system, and reactions requiring a catalyst nothing provides are omitted and counted.
+
+### Maintenance
+
+- v0.3.0's version DOI recorded in `CITATION.cff` after minting.
 
 ### Fixed
 

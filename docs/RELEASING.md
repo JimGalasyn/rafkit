@@ -36,10 +36,16 @@ no reason to rediscover them.
 
 ## After publishing — the step that is missed every time
 
-6. **Record the new version DOI in `CITATION.cff`.** In `run-farm`, three consecutive
-   releases were minted and left unrecorded. A `CITATION.cff` that omits the DOI for
-   the version it names is wrong in the one file whose entire job is to be cited
-   correctly.
+6. **Record the new version DOI in `CITATION.cff` — and add its CHANGELOG line in the
+   same commit.** In `run-farm`, three consecutive releases were minted and left
+   unrecorded. A `CITATION.cff` that omits the DOI for the version it names is wrong in
+   the one file whose entire job is to be cited correctly.
+
+   The CHANGELOG half is not decoration. This commit lands *after* a release and is
+   therefore the first commit of the *next* one, where step 1 reliably catches it as an
+   undocumented change — it did so on v0.2.0, v0.3.0 **and** v0.4.0. Writing its entry
+   while you are already in the file costs nothing and stops the check from spending
+   its attention on the same known gap every time.
 
 ## Verify the artifacts, not the invocations
 

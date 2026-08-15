@@ -26,7 +26,7 @@ from rafkit.raf import (
     sample_irrraf,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "BinaryPolymerNetwork", "binary_polymer", "ReactionNetwork",
