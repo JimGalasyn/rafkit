@@ -218,15 +218,24 @@ def sample_irrraf(net: BinaryPolymerNetwork, reactions: frozenset[int],
     return current
 
 
-def irrraf_census(net: BinaryPolymerNetwork, raf: RafResult, n_samples: int,
+def irrraf_census(net: BinaryPolymerNetwork, raf, n_samples: int,
                   rng, strict: bool = False) -> dict:
     """Sample irreducible RAFs and report how many distinct ones turn up.
+
+    `raf` may be a `RafResult` or a bare set of reactions -- pass one of the u-RAFs
+    from `rafkit.inhibition.max_urafs` to take a census under inhibition. That is
+    correct without further conditions because the uninhibited property is inherited
+    downward: every sub-RAF of a u-RAF is itself a u-RAF (Hordijk & Steel 2012), so
+    every core sampled from one is uninhibited too.
 
     The count is the quantity of interest: it upper-bounds the number of
     distinguishable lineages the chemistry can carry, so a census of 1 means there
     is nothing to inherit and no ecology is possible regardless of the dynamics
     later placed on top.
     """
+    if not isinstance(raf, RafResult):
+        raf = RafResult(reactions=frozenset(raf),
+                        closure=_closure(net, frozenset(raf)), n_rounds=0)
     if raf.is_empty:
         return {"n_samples": 0, "n_distinct": 0, "sizes": [], "mean_size": float("nan"),
                 "mean_jaccard": float("nan"), "min_jaccard": float("nan"),

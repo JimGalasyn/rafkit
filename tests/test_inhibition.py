@@ -166,3 +166,74 @@ class TestDivergenceFromCatReNet:
         assert is_uraf(net, {0}, cls) and is_uraf(net, {1}, cls)
         assert _refine(net, {0, 1}) == {0, 1}          # the union IS an RAF
         assert not is_uninhibited(net, {0, 1}, cls)    # but violates (u-2)
+
+
+class TestDynamics:
+    """Inhibition in the simulator, which is what lets a network *lose* a subRAF."""
+
+    def test_an_inhibited_reaction_has_zero_propensity(self):
+        from rafkit.gillespie import propensities
+        net = parse_crs("Food: a, b\nr1 : a + b [a] {z} => c\n")
+        counts = np.zeros(net.n_molecules, dtype=np.int64)
+        for m in net.food:
+            counts[m] = 5
+        assert propensities(net, counts)[0] > 0            # z absent: runs
+        counts[net.molecules.index("z")] = 1
+        assert propensities(net, counts)[0] == 0.0         # z present: blocked outright
+
+    def test_inhibition_blocks_rather_than_slows(self):
+        """Distinct from the uncatalysed case, which merely runs at a reduced rate."""
+        from rafkit.gillespie import propensities
+        net = parse_crs("Food: a, b\nr1 : a + b [q] {z} => c\n")
+        counts = np.zeros(net.n_molecules, dtype=np.int64)
+        for m in net.food:
+            counts[m] = 5
+        uncatalysed = propensities(net, counts)[0]
+        assert uncatalysed > 0                             # no catalyst, still proceeds
+        counts[net.molecules.index("z")] = 1
+        assert propensities(net, counts)[0] == 0.0
+
+    def test_a_subraf_stops_producing_once_its_inhibitor_appears(self):
+        """Dissolution. r2 runs as soon as c exists; r3 is self-catalysed so its
+        product e arrives only after a rare uncatalysed event, and blocks r2."""
+        from rafkit import simulate
+        net = parse_crs(
+            "Food: a, b\nr1 : a + b [a] => c\nr2 : a + c [c] {e} => d\n"
+            "r3 : a + b [e] => e\n")
+        tr = simulate(net, n_events=4000, rng=np.random.default_rng(2), sample_every=10)
+        t_e = tr.first_seen("e")
+        assert t_e is not None, "the inhibitor never appeared; test is vacuous"
+
+        d = tr.of("d").astype(float)
+        i = int(np.searchsorted(tr.times, t_e))
+        assert d[i] > 0, "d never accumulated before the block; test is vacuous"
+        assert d[-1] == d[i], "d kept growing after its reaction was inhibited"
+
+
+class TestDownstreamUnderInhibition:
+    """The set-theoretic tools need no change: pass a u-RAF and they stay correct,
+    because the uninhibited property is inherited downward."""
+
+    def _setup(self, seed=7):
+        net = binary_polymer(max_len=4, food_len=2, p=0.01,
+                             rng=np.random.default_rng(seed), cleavage=True)
+        raf = sorted(max_raf(net).reactions)
+        produced = sorted(support(net, raf) - net.food)
+        inh = tuple((frozenset({produced[i]}), frozenset({raf[i]})) for i in range(2))
+        return net, raf, inh
+
+    def test_cores_sampled_from_a_uraf_are_themselves_urafs(self):
+        from rafkit import sample_irrraf
+        net, raf, inh = self._setup()
+        urafs = max_urafs(net, inh, reactions=raf)
+        assert urafs
+        for u in urafs:
+            for i in range(10):
+                assert is_uraf(net, sample_irrraf(net, u, np.random.default_rng(i)), inh)
+
+    def test_census_accepts_a_bare_reaction_set(self):
+        from rafkit import irrraf_census
+        net, raf, inh = self._setup()
+        u = max_urafs(net, inh, reactions=raf)[0]
+        census = irrraf_census(net, u, n_samples=5, rng=np.random.default_rng(0))
+        assert census["n_distinct"] >= 1

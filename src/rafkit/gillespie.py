@@ -15,6 +15,8 @@ reduction factor**, which is the mechanism under test.
 Conventions, all inherited from the reference rather than chosen here:
 
 * a reaction whose catalyst is absent still proceeds, at ``1 / uncatalysed_factor``;
+* a reaction with an **inhibitor present does not proceed at all** -- inhibition is a
+  block, not a slowdown, and it is independent of catalysis;
 * food molecules are replenished when they fall below ``food_floor``;
 * a ligation ``a + b -> ab`` with ``a == b`` takes the pair count ``n(n-1)/2``, not ``n^2``.
 """
@@ -88,6 +90,11 @@ def propensities(net, counts: np.ndarray, *,
     runs at ``1 / uncatalysed_factor`` of it. That difference is the whole mechanism:
     it makes seeding rare but not impossible.
 
+    **Inhibition is absolute**: if any molecule inhibiting a reaction is present, its
+    propensity is zero regardless of catalysis. This is what lets a running network
+    *lose* a subRAF rather than only gain one -- the effect Hordijk, Naylor, Krasnogor
+    & Fellermann (2018) report as toxic elements causing loss of autocatalytic subsets.
+
     `reactions` restricts which reactions may fire. **This is a fidelity requirement,
     not a convenience.** Hordijk & Steel study "the molecular flow on this maximal RAF";
     simulating the entire generated network instead lets any reaction fire uncatalysed,
@@ -98,10 +105,13 @@ def propensities(net, counts: np.ndarray, *,
     out = np.zeros(net.n_reactions)
     allowed = range(net.n_reactions) if reactions is None else reactions
     present = frozenset(np.flatnonzero(counts).tolist())
+    inhibitors = getattr(net, "inhibitors", ())
     for r in allowed:
         combos = _pair_count(counts, net.reactants(r))
         if combos <= 0:
             continue
+        if inhibitors and (inhibitors[r] & present):
+            continue                      # inhibited: blocked outright
         catalysed = is_catalysed(net.catalysts[r], present)
         out[r] = combos if catalysed else combos / uncatalysed_factor
     return out

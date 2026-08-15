@@ -130,6 +130,15 @@ r2 : a + b [b] {c} => d      # inhibited by c
 Two maximal u-RAFs, `{r1}` and `{r2}`: each is an RAF whose support avoids its own
 inhibitor, and their union is an RAF that fails the uninhibited condition.
 
+`simulate` respects inhibition too — an inhibited reaction has propensity zero, so a
+running network can **lose** a subRAF, not merely gain one. See
+`examples/inhibition_dissolution.py`.
+
+The set-theoretic tools need no special handling: `sample_irrraf`, `irrraf_census`,
+`core_raf` and `catalytically_reachable` all take a reaction set, and passing a u-RAF
+is correct because the uninhibited property is inherited downward — every sub-RAF of a
+u-RAF is a u-RAF.
+
 Deciding whether a u-RAF exists is NP-complete, but the problem is fixed-parameter
 tractable in *k*, the number of inhibition classes — and **k is a property of how you
 encode inhibition, not of the chemistry.** `classes_from_inhibitors` groups by

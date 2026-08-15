@@ -18,6 +18,24 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - CRS gains CatReNet's inhibitor syntax: a brace group **after** the catalyst bracket,
   `r1 : a + b [c] {d e} -> x`, and round-trips it.
 
+- **`simulate` respects inhibition**: a reaction with an inhibitor present has
+  propensity **zero**, regardless of catalysis. Inhibition is a block where an absent
+  catalyst is only a slowdown, and that difference is what lets a running network
+  *lose* a subRAF rather than only gain one.
+- **`irrraf_census` accepts a bare reaction set** as well as a `RafResult`, so a u-RAF
+  can be passed straight in.
+- **`examples/inhibition_dissolution.py`** — the static picture (two maximal u-RAFs,
+  neither canonical) and the dynamic one (a subRAF that produces steadily, then stops
+  dead when a rare uncatalysed event brings its inhibitor into existence).
+
+### Unchanged, and verified to need no change
+
+- `sample_irrraf`, `irrraf_census`, `core_raf`, `has_unique_irraf` and
+  `catalytically_reachable` all already take a reaction set, and passing a u-RAF is
+  correct **without further conditions**: the uninhibited property is inherited
+  downward, so every sub-RAF of a u-RAF is a u-RAF. Checked on 165 sampled cores
+  across seven networks, then asserted as a test rather than assumed.
+
 ### Divergence from CatReNet, verified
 
 - Once inhibitors are present, CatReNet's `maxRaf` filters inhibited reactions *during*
