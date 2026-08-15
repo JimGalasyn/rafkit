@@ -20,6 +20,27 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   maximal RAF*, and simulating the whole generated network instead lets species arrive by
   routes outside the set under study.
 
+- **`core_raf` / `has_unique_irraf`** — Huson, Xavier & Steel (2024): `Core(Q)` is an
+  RAF *iff* the system has exactly one irreducible RAF, and then it is that iRAF. A
+  polynomial test for a question that is otherwise hard.
+- **`catalytically_reachable`** — least fixpoint of what catalysed firings alone can
+  make; everything outside it provably needs a spontaneous seeding event.
+
+### Validated against published worked examples
+
+- **Kauffman binary polymer example** (Huson, Xavier & Steel 2024, corollary 3.1
+  illustration): the published claim is that the system is an RAF "and it contains six
+  other RAFs as subsets". All seven are found exactly, and the two irreducible ones.
+- **The three-iRAF system** (same paper, §4.1): all three found, none nested, and each
+  contained in the union of the other two — the subtlety that makes pairwise results
+  fail to extend to triples.
+
+### Known limitations, newly documented
+
+- Catalysis is simple and disjunctive; conjunctive catalyst sets and the
+  χ = {∅} / χ = ∅ distinction are not representable. Two further published worked
+  examples are blocked on this. See the README.
+
 ### Pending before release
 
 - An example reproducing Hordijk & Steel (2012) end to end. The code is in; the worked

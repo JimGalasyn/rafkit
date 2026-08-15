@@ -298,3 +298,32 @@ def catrenet_strictly_autocatalytic(net, raf: RafResult | None = None) -> frozen
         return frozenset()
     pool = raf.closure - net.food
     return frozenset(r for r in raf.reactions if net.catalysts[r] & pool)
+
+
+def core_raf(net, reactions=None) -> frozenset[int]:
+    """`Core(Q)`: the reactions whose removal collapses the whole set.
+
+    Defined by Huson, Xavier & Steel (2024) as
+    ``Core(Q) = {r in R : phi(R \\ {r}) = empty}``. Their result: **this set is an RAF
+    if and only if the system has a unique irreducible RAF**, and when it is, it *is*
+    that iRAF. `has_unique_irraf` is the usable form of that test.
+    """
+    allowed = frozenset(range(net.n_reactions) if reactions is None else reactions)
+    return frozenset(r for r in allowed if not _refine(net, allowed - {r}))
+
+
+def has_unique_irraf(net, reactions=None) -> bool:
+    """Whether the system has exactly one irreducible RAF, in polynomial time.
+
+    Deciding how *many* iRAFs there are is hard in general -- there may be
+    exponentially many, and finding the smallest is NP-hard (Steel, Hordijk & Smith
+    2012) -- but the *unique* case is cheap, which is the point of `core_raf`.
+
+    Returns False when there is no RAF at all: no iRAF is not one iRAF.
+    """
+    allowed = frozenset(range(net.n_reactions) if reactions is None else reactions)
+    maximal = _refine(net, allowed)
+    if not maximal:
+        return False
+    core = core_raf(net, allowed)
+    return bool(core) and _refine(net, core) == core

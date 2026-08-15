@@ -82,6 +82,8 @@ counted as **one** catalysed reaction, not two. Use `net.catalysis_level` — no
 | `irrraf_census` | how many *distinct* irreducible cores a network carries |
 | `exploitability` | share of RAF products contributing no catalysis back |
 | `is_food_catalysed` | whether a core runs on food catalysis alone, and so carries no heredity |
+| `core_raf` / `has_unique_irraf` | Huson, Xavier & Steel's polynomial test for a *unique* irreducible RAF |
+| `catalytically_reachable` | what can be made without any spontaneous reaction |
 | `binary_polymer` | Kauffman binary polymer generator, with optional cleavage |
 | `ReactionNetwork` | arbitrary catalytic reaction systems, same protocol |
 | `read_crs` / `write_crs` | CatReNet's CRS interchange format |
@@ -89,6 +91,22 @@ counted as **one** catalysed reaction, not two. Use `net.catalysis_level` — no
 
 Every algorithm carries hand-computed known-answer tests, because a RAF algorithm that
 is subtly wrong produces plausible numbers rather than errors.
+
+## Limitations
+
+Catalysis here is **simple and disjunctive**: `catalysts[r]` is a set of molecules, any
+one of which suffices. Two things in the current literature cannot be expressed, both
+from Huson, Xavier & Steel (2024), whose subject is precisely richer catalysis:
+
+- **Conjunctive catalyst sets.** `r : a + b [{a,d}, e] -> c` — meaning *a and d
+  together*, **or** *e* — needs sets of sets. Their Example 3.2 and their §2.4 system
+  both use this, so neither is in the test suite despite having published answers.
+- **"May proceed uncatalysed" (χ = {∅}) versus "must be catalysed" (χ = ∅).** An empty
+  catalyst set here means the second; the first has no representation, and the
+  distinction is load-bearing in their §2.4 system.
+
+Supporting both is the natural next step for this library, and would let two more
+published worked examples become tests.
 
 ## Notes on irreducible cores
 

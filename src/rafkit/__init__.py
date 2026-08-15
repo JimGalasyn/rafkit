@@ -17,8 +17,9 @@ from rafkit.crs import parse_crs, read_crs, to_crs, write_crs
 from rafkit.gillespie import Trajectory, propensities, simulate
 from rafkit.network import ReactionNetwork
 from rafkit.raf import (
-    RafResult, catrenet_strictly_autocatalytic, exploitability, irrraf_census,
-    is_food_catalysed, max_raf, max_raf_strict, sample_irrraf,
+    RafResult, catrenet_strictly_autocatalytic, core_raf, exploitability,
+    has_unique_irraf, irrraf_census, is_food_catalysed, max_raf, max_raf_strict,
+    sample_irrraf,
 )
 
 __version__ = "0.1.0"
@@ -27,6 +28,7 @@ __all__ = [
     "BinaryPolymerNetwork", "binary_polymer", "ReactionNetwork",
     "RafResult", "max_raf", "max_raf_strict", "sample_irrraf", "irrraf_census",
     "exploitability", "is_food_catalysed", "catrenet_strictly_autocatalytic",
+    "core_raf", "has_unique_irraf",
     "parse_crs", "read_crs", "to_crs", "write_crs",
     "simulate", "propensities", "Trajectory",
 ]
