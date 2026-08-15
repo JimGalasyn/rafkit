@@ -47,20 +47,27 @@ class RafResult:
 
 
 def _closure(net: BinaryPolymerNetwork, reactions: frozenset[int]) -> frozenset[int]:
-    """Molecules producible from the food set using `reactions`."""
+    """Molecules producible from the food set using `reactions`.
+
+    Direction-aware: a ligation fires when both its reactants are present, a cleavage
+    when its single reactant is. Cleavage **does** enlarge this set, because a polymer
+    has many splits and need not be cleaved along the one it was built from -- see the
+    `binary_polymer` docstring, where the contrary argument is recorded as refuted.
+    """
     have = set(net.food)
-    pending = [net.reactions[r] for r in reactions]
+    pending = [(net.reactants(r), net.products(r)) for r in reactions]
     changed = True
     while changed:
         changed = False
         still = []
-        for a, b, ab in pending:
-            if a in have and b in have:
-                if ab not in have:
-                    have.add(ab)
-                    changed = True
+        for reactants, products in pending:
+            if all(x in have for x in reactants):
+                for x in products:
+                    if x not in have:
+                        have.add(x)
+                        changed = True
             else:
-                still.append((a, b, ab))
+                still.append((reactants, products))
         pending = still
     return frozenset(have)
 
@@ -74,8 +81,7 @@ def max_raf(net: BinaryPolymerNetwork) -> RafResult:
         have = _closure(net, current)
         keep = frozenset(
             r for r in current
-            if net.reactions[r][0] in have and net.reactions[r][1] in have
-            and (net.catalysts[r] & have)
+            if all(x in have for x in net.reactants(r)) and (net.catalysts[r] & have)
         )
         if keep == current:
             return RafResult(reactions=current, closure=have, n_rounds=rounds)
@@ -103,9 +109,7 @@ def exploitability(net: BinaryPolymerNetwork, raf: RafResult) -> dict:
     catalyses_in_raf = set()
     reactants_in_raf = set()
     for r in raf.reactions:
-        a, b, _ = net.reactions[r]
-        reactants_in_raf.add(a)
-        reactants_in_raf.add(b)
+        reactants_in_raf.update(net.reactants(r))
         catalyses_in_raf |= (net.catalysts[r] & products)
 
     strict = products - catalyses_in_raf
@@ -151,8 +155,7 @@ def _refine(net: BinaryPolymerNetwork, reactions: frozenset[int],
         pool = have - net.food if strict else have
         keep = frozenset(
             r for r in current
-            if net.reactions[r][0] in have and net.reactions[r][1] in have
-            and (net.catalysts[r] & pool)
+            if all(x in have for x in net.reactants(r)) and (net.catalysts[r] & pool)
         )
         if keep == current:
             return current

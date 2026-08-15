@@ -11,16 +11,16 @@ import pytest
 
 from morphospace.chemistry.binary_polymer import BinaryPolymerNetwork, binary_polymer
 from morphospace.chemistry.raf import (
-    _refine, exploitability, irrraf_census, is_food_catalysed, max_raf,
+    _closure, _refine, exploitability, irrraf_census, is_food_catalysed, max_raf,
     max_raf_strict, sample_irrraf)
 
 
-def _net(molecules, food, reactions, catalysts):
+def _net(molecules, food, reactions, catalysts, directions=()):
     """Hand-built network; the generator is not involved."""
     return BinaryPolymerNetwork(
         molecules=tuple(molecules), food=frozenset(food),
         reactions=tuple(reactions), catalysts=tuple(frozenset(c) for c in catalysts),
-        p=0.0, max_len=0, food_len=0)
+        p=0.0, max_len=0, food_len=0, directions=tuple(directions))
 
 
 class TestMaxRaf:
@@ -225,3 +225,82 @@ class TestSelfReferentialRaf:
         assert not is_food_catalysed(net, s)
         for r in s:
             assert not _refine(net, s - {r}, strict=True), f"dropping {r} left a RAF"
+
+
+class TestCleavage:
+    """Cleavage chemistry -- the direction-aware half of the RAF condition.
+
+    `DESIGN_abiogenesis.md` §6b names the omitted cleavage direction as prime suspect
+    for E4's uncalibrated transition, and both published binary-polymer references use
+    cleavage-ligation chemistries, so these are the tests that let E4 be compared to
+    them at all.
+    """
+
+    def test_generator_doubles_reactions_and_labels_directions(self):
+        lig = binary_polymer(max_len=5, food_len=2, p=0.0, rng=np.random.default_rng(0))
+        both = binary_polymer(max_len=5, food_len=2, p=0.0, rng=np.random.default_rng(0),
+                              cleavage=True)
+        assert both.n_reactions == 2 * lig.n_reactions
+        assert both.n_cleavages == lig.n_reactions
+        assert lig.n_cleavages == 0
+
+    def test_reactants_and_products_respect_direction(self):
+        n = _net("abc", food=[0, 1], reactions=[(0, 1, 2), (0, 1, 2)],
+                 catalysts=[{2}, {2}], directions=(1, -1))
+        assert n.reactants(0) == (0, 1) and n.products(0) == (2,)
+        assert n.reactants(1) == (2,) and n.products(1) == (0, 1)
+
+    def test_a_cleavage_can_belong_to_a_raf(self):
+        # a+b -> ab (catalysed by ab) plus its reverse, also catalysed by ab.
+        n = _net("abc", food=[0, 1], reactions=[(0, 1, 2), (0, 1, 2)],
+                 catalysts=[{2}, {2}], directions=(1, -1))
+        assert max_raf(n).reactions == frozenset({0, 1})
+
+    def test_cleavage_alone_cannot_bootstrap(self):
+        # Without the ligation there is no route to ab, so the cleavage never fires.
+        n = _net("abc", food=[0, 1], reactions=[(0, 1, 2)], catalysts=[{2}],
+                 directions=(-1,))
+        assert max_raf(n).is_empty
+
+    def test_cleavage_enlarges_the_closure(self):
+        # The claim `binary_polymer` records as refuted: a polymer has many splits, so
+        # cleaving along one it was not built from reaches genuinely new molecules.
+        net = binary_polymer(max_len=6, food_len=2, p=0.004,
+                             rng=np.random.default_rng(1), cleavage=True)
+        ligations = frozenset(r for r in range(net.n_reactions) if net.directions[r] > 0)
+        with_cleavage = max_raf(net).closure
+        without = _closure(net, _refine(net, ligations))
+        assert len(with_cleavage) > len(without)
+        assert without < with_cleavage          # strict superset, not a different set
+
+    def test_directions_length_is_validated(self):
+        with pytest.raises(ValueError, match="directions"):
+            BinaryPolymerNetwork(molecules=("a", "b", "c"), food=frozenset({0, 1}),
+                                 reactions=((0, 1, 2),), catalysts=(frozenset({2}),),
+                                 p=0.0, max_len=0, food_len=0, directions=(1, -1))
+
+    def test_paired_catalysis_shares_catalysts_between_directions(self):
+        net = binary_polymer(max_len=5, food_len=2, p=0.01,
+                             rng=np.random.default_rng(0), cleavage=True)
+        nl = net.n_reactions // 2
+        assert net.catalysts[:nl] == net.catalysts[nl:]
+
+    def test_independent_catalysis_does_not(self):
+        net = binary_polymer(max_len=5, food_len=2, p=0.01,
+                             rng=np.random.default_rng(0), cleavage=True,
+                             paired_catalysis=False)
+        nl = net.n_reactions // 2
+        assert net.catalysts[:nl] != net.catalysts[nl:]
+
+    def test_catalysis_level_counts_pairs_not_directions(self):
+        # The published f convention: a cleavage-ligation pair is ONE reaction, so f
+        # must not double when the reverse direction is added.
+        net = binary_polymer(max_len=6, food_len=2, p=0.004,
+                             rng=np.random.default_rng(0), cleavage=True)
+        assert net.catalysis_level == pytest.approx(
+            net.mean_catalysed_per_molecule / 2, rel=1e-9)
+
+    def test_catalysis_level_matches_the_naive_count_without_cleavage(self):
+        net = binary_polymer(max_len=6, food_len=2, p=0.004,
+                             rng=np.random.default_rng(0))
+        assert net.catalysis_level == pytest.approx(net.mean_catalysed_per_molecule)
