@@ -2,8 +2,8 @@
 
 [![CI](https://github.com/JimGalasyn/rafkit/actions/workflows/ci.yml/badge.svg)](https://github.com/JimGalasyn/rafkit/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/JimGalasyn/rafkit/branch/main/graph/badge.svg)](https://codecov.io/gh/JimGalasyn/rafkit)
-[![PyPI](https://img.shields.io/pypi/v/rafkit.svg)](https://pypi.org/project/rafkit/)
-[![Python](https://img.shields.io/pypi/pyversions/rafkit.svg)](https://pypi.org/project/rafkit/)
+[![PyPI](https://img.shields.io/pypi/v/rafkit.svg?cacheSeconds=3600)](https://pypi.org/project/rafkit/)
+[![Python](https://img.shields.io/pypi/pyversions/rafkit.svg?cacheSeconds=3600)](https://pypi.org/project/rafkit/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21954795.svg)](https://doi.org/10.5281/zenodo.21954795)
 
