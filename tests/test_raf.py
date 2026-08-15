@@ -10,7 +10,9 @@ import numpy as np
 import pytest
 
 from morphospace.chemistry.binary_polymer import BinaryPolymerNetwork, binary_polymer
-from morphospace.chemistry.raf import exploitability, max_raf
+from morphospace.chemistry.raf import (
+    _refine, exploitability, irrraf_census, is_food_catalysed, max_raf,
+    max_raf_strict, sample_irrraf)
 
 
 def _net(molecules, food, reactions, catalysts):
@@ -134,3 +136,92 @@ class TestGenerator:
         kw = {"max_len": 5, "food_len": 2, "p": 1e-3} | bad
         with pytest.raises(ValueError):
             binary_polymer(**kw)
+
+
+class TestIrrRaf:
+    """Hand-computed irreducible RAFs.
+
+    Same reasoning as `TestMaxRaf`: a sampler that quietly returns something which is
+    not irreducible, or misses cores that exist, produces a plausible census rather
+    than an error -- and the census is the number the ecology argument rests on.
+    """
+
+    def test_two_disjoint_cores_are_both_found(self):
+        # a+b -> c catalysed by c, and a+b -> d catalysed by d. Each is a RAF on its
+        # own, they share only the food, so there are exactly two irreducible cores.
+        n = _net("abcd", food=[0, 1],
+                 reactions=[(0, 1, 2), (0, 1, 3)], catalysts=[{2}, {3}])
+        raf = max_raf(n)
+        assert raf.reactions == frozenset({0, 1})
+        c = irrraf_census(n, raf, n_samples=20, rng=np.random.default_rng(0))
+        assert c["n_distinct"] == 2
+        assert c["sizes"] == [1, 1]
+        assert c["mean_jaccard"] == 0.0      # disjoint
+        assert c["core_size"] == 0           # no shared reaction
+        assert c["union_size"] == 2
+
+    def test_an_interdependent_pair_is_a_single_irreducible_core(self):
+        # a+b -> c catalysed by d; a+c -> d catalysed by c. Neither reaction survives
+        # without the other, so the maximal RAF is already irreducible.
+        n = _net("abcd", food=[0, 1],
+                 reactions=[(0, 1, 2), (0, 2, 3)], catalysts=[{3}, {2}])
+        raf = max_raf(n)
+        assert raf.reactions == frozenset({0, 1})
+        c = irrraf_census(n, raf, n_samples=10, rng=np.random.default_rng(0))
+        assert c["n_distinct"] == 1
+        assert c["sizes"] == [2]
+        assert c["core_size"] == 2
+
+    def test_a_sampled_core_is_itself_a_raf(self):
+        net = binary_polymer(max_len=6, food_len=2, p=0.01,
+                             rng=np.random.default_rng(3))
+        raf = max_raf(net)
+        assert not raf.is_empty
+        s = sample_irrraf(net, raf.reactions, np.random.default_rng(1))
+        assert s, "sampler returned an empty set"
+        assert _refine(net, s) == s, "sampled core is not a fixpoint"
+
+    def test_a_sampled_core_is_irreducible(self):
+        net = binary_polymer(max_len=6, food_len=2, p=0.01,
+                             rng=np.random.default_rng(3))
+        s = sample_irrraf(net, max_raf(net).reactions, np.random.default_rng(1))
+        for r in s:
+            assert not _refine(net, s - {r}), f"dropping {r} left a RAF: not minimal"
+
+    def test_empty_raf_gives_an_empty_census(self):
+        n = _net("abc", food=[0, 1], reactions=[(0, 1, 2)], catalysts=[set()])
+        c = irrraf_census(n, max_raf(n), n_samples=5, rng=np.random.default_rng(0))
+        assert c["n_distinct"] == 0
+
+
+class TestSelfReferentialRaf:
+    """Food-catalysed cores satisfy the letter of RAF but carry no heredity."""
+
+    def test_a_food_catalysed_reaction_is_a_raf_but_not_self_referential(self):
+        n = _net("abc", food=[0, 1], reactions=[(0, 1, 2)], catalysts=[{0}])
+        assert max_raf(n).reactions == frozenset({0})     # a RAF by the definition
+        assert is_food_catalysed(n, frozenset({0}))
+        assert max_raf_strict(n).is_empty                 # but nothing self-referential
+
+    def test_a_product_catalysed_reaction_survives_the_strict_reading(self):
+        n = _net("abc", food=[0, 1], reactions=[(0, 1, 2)], catalysts=[{2}])
+        assert not is_food_catalysed(n, frozenset({0}))
+        assert max_raf_strict(n).reactions == frozenset({0})
+
+    def test_strict_drops_only_the_food_catalysed_half(self):
+        # r0 is food-catalysed, r1 needs its own product. Only r1 is self-referential.
+        n = _net("abcd", food=[0, 1],
+                 reactions=[(0, 1, 2), (0, 1, 3)], catalysts=[{0}, {3}])
+        assert max_raf(n).reactions == frozenset({0, 1})
+        assert max_raf_strict(n).reactions == frozenset({1})
+
+    def test_a_sampled_strict_core_is_irreducible(self):
+        net = binary_polymer(max_len=6, food_len=2, p=0.01,
+                             rng=np.random.default_rng(3))
+        base = max_raf_strict(net)
+        assert not base.is_empty
+        s = sample_irrraf(net, base.reactions, np.random.default_rng(1), strict=True)
+        assert s and _refine(net, s, strict=True) == s
+        assert not is_food_catalysed(net, s)
+        for r in s:
+            assert not _refine(net, s - {r}, strict=True), f"dropping {r} left a RAF"

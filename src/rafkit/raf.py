@@ -136,18 +136,138 @@ def _touching(net: BinaryPolymerNetwork, raf: RafResult, m: int) -> int:
     return sum(1 for r in raf.reactions if m in net.reactions[r])
 
 
-def _refine(net: BinaryPolymerNetwork, reactions: frozenset[int]) -> frozenset[int]:
-    """One RAF fixpoint restricted to a reaction subset."""
+def _refine(net: BinaryPolymerNetwork, reactions: frozenset[int],
+            strict: bool = False) -> frozenset[int]:
+    """One RAF fixpoint restricted to a reaction subset.
+
+    `strict=True` requires every catalyst to be a **non-food** molecule the set
+    produces, which is the self-referential reading of "reflexively autocatalytic"
+    (see `is_food_catalysed`). Default `False` is the literal Hordijk & Steel
+    condition and is what `max_raf` and every prior result use.
+    """
     current = reactions
     while True:
         have = _closure(net, current)
+        pool = have - net.food if strict else have
         keep = frozenset(
             r for r in current
             if net.reactions[r][0] in have and net.reactions[r][1] in have
-            and (net.catalysts[r] & have)
+            and (net.catalysts[r] & pool)
         )
         if keep == current:
             return current
         current = keep
         if not current:
             return current
+
+
+def max_raf_strict(net: BinaryPolymerNetwork) -> RafResult:
+    """The maximal self-referential RAF: catalysts must be non-food products.
+
+    The subset of the maximal RAF that actually needs its own output to run. This is
+    the object a propagule would have to carry, so it -- not `max_raf` -- is where a
+    count of lineages has to be taken.
+    """
+    current = _refine(net, frozenset(range(net.n_reactions)), strict=True)
+    return RafResult(reactions=current, closure=_closure(net, current), n_rounds=0)
+
+
+def sample_irrraf(net: BinaryPolymerNetwork, reactions: frozenset[int],
+                  rng, strict: bool = False) -> frozenset[int]:
+    """One irreducible RAF contained in `reactions`, by randomized shrinking.
+
+    An irreducible RAF (Hordijk & Steel) is a RAF with no proper subset that is
+    itself a RAF: a minimal self-sustaining core. It is the natural formal stand-in
+    for a *lineage* -- the smallest thing a propagule has to carry to re-establish
+    the network from food alone.
+
+    Walk the reactions in a random order and try to drop each one, keeping the
+    refined remainder whenever it is non-empty. One pass suffices, because maximal
+    RAF is monotone in the reaction set: if dropping `r` collapses the set, it also
+    collapses every subset, so a reaction that survives its own visit can never
+    become removable later. Every reaction present at the end was therefore visited
+    while present and found irremovable, which is the definition.
+
+    The random order is what makes this a *sampler* -- different orders land in
+    different irreducible cores. Distinct results are a lower bound on how many
+    exist, never an upper one.
+
+    **Prior art.** This is Steel, Hordijk & Smith, "Minimal autocatalytic networks"
+    (arXiv:1212.4450, 2012), which describes the same remove-and-refine procedure and
+    the same randomised re-ordering to sample. It was reinvented here on 2026-08-15
+    and the attribution added on discovery; see `DESIGN_abiogenesis.md` §6b. The same
+    paper proves there may be exponentially many irrRAFs and that finding the
+    smallest RAF is NP-hard, so a distinct-count that never saturates is the expected
+    result rather than a surprising one.
+    """
+    current = _refine(net, reactions, strict=strict)
+    order = list(current)
+    rng.shuffle(order)
+    for r in order:
+        if r not in current:
+            continue
+        trial = _refine(net, current - {r}, strict=strict)
+        if trial:
+            current = trial
+    return current
+
+
+def irrraf_census(net: BinaryPolymerNetwork, raf: RafResult, n_samples: int,
+                  rng, strict: bool = False) -> dict:
+    """Sample irreducible RAFs and report how many distinct ones turn up.
+
+    The count is the quantity of interest: it upper-bounds the number of
+    distinguishable lineages the chemistry can carry, so a census of 1 means there
+    is nothing to inherit and no ecology is possible regardless of the dynamics
+    later placed on top.
+    """
+    if raf.is_empty:
+        return {"n_samples": 0, "n_distinct": 0, "sizes": [], "mean_size": float("nan"),
+                "mean_jaccard": float("nan"), "min_jaccard": float("nan"),
+                "union_size": 0, "core_size": 0}
+
+    found: list[frozenset[int]] = []
+    seen: set[frozenset[int]] = set()
+    for _ in range(n_samples):
+        s = sample_irrraf(net, raf.reactions, rng, strict=strict)
+        found.append(s)
+        seen.add(s)
+
+    distinct = sorted(seen, key=len)
+    jac = []
+    for i in range(len(distinct)):
+        for j in range(i + 1, len(distinct)):
+            a, b = distinct[i], distinct[j]
+            jac.append(len(a & b) / len(a | b))
+    self_ref = [c for c in distinct if not is_food_catalysed(net, c)]
+    union: frozenset[int] = frozenset().union(*distinct)
+    core: frozenset[int] = distinct[0]
+    for s in distinct[1:]:
+        core = core & s
+
+    return {"n_samples": n_samples,
+            "n_distinct": len(distinct),
+            "n_self_referential": len(self_ref),
+            "self_ref_sizes": [len(c) for c in self_ref],
+            "sizes": [len(s) for s in distinct],
+            "mean_size": sum(len(s) for s in found) / len(found),
+            "mean_jaccard": sum(jac) / len(jac) if jac else float("nan"),
+            "min_jaccard": min(jac) if jac else float("nan"),
+            "union_size": len(union),
+            "core_size": len(core)}
+
+
+def is_food_catalysed(net: BinaryPolymerNetwork, core: frozenset[int]) -> bool:
+    """Whether every reaction in `core` has a catalyst in the food set.
+
+    Such a core is a RAF by the letter of the definition -- food is in the closure,
+    so "catalysed by a molecule producible from F" is satisfied -- but it is not
+    self-referential: it runs wherever the food runs, needs none of its own products,
+    and therefore carries no heredity. A propagule is not required to establish it.
+
+    This is a real degeneracy of the RAF definition rather than a quirk of E4, and it
+    has to be split out before any count of cores can be read as a count of lineages.
+    """
+    if not core:
+        return False
+    return all(net.catalysts[r] & net.food for r in core)
