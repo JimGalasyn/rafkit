@@ -87,11 +87,32 @@ counted as **one** catalysed reaction, not two. Use `net.catalysis_level` — no
 | `binary_polymer` | Kauffman binary polymer generator, with optional cleavage |
 | `ReactionNetwork` | arbitrary catalytic reaction systems, same protocol |
 | `read_crs` / `write_crs` | CatReNet's CRS interchange format |
+| `to_pnml` / `write_pnml` | PNML export (ISO/IEC 15909-2) for the Petri net ecosystem |
 | `simulate` | Gillespie direct method — watch subRAFs seed themselves into existence |
 | `max_urafs` | uninhibited RAFs, when a molecule can prevent a reaction |
 
 Every algorithm carries hand-computed known-answer tests, because a RAF algorithm that
 is subtly wrong produces plausible numbers rather than errors.
+
+## A reaction network is a Petri net
+
+Species are places, reactions are transitions, molecule counts are tokens. `write_pnml`
+exports to PNML (ISO/IEC 15909-2), so these networks open in Petri net editors, model
+checkers, and the unfolding tools that compute the causal structure of a run.
+
+Three things need care, and each is explicit rather than silent:
+
+- **Catalysis becomes a self-loop.** P/T nets have no read arc, so a catalyst is a pair
+  of arcs, consuming the token and returning it.
+- **Alternative catalyst sets become separate transitions**, named `r1`, `r1#2`, …, since
+  a transition's preset is a conjunction and cannot express "either set".
+- **Food gets source transitions**, because RAF food is inexhaustible and no initial
+  marking expresses that — a marking of *n* deadlocks after *n* uses.
+
+Inhibition has no `ptnet` representation and is written as a `toolspecific` annotation,
+with a warning in the file: a reader that ignores it gets a *different system*.
+Reactions requiring a catalyst that nothing provides are omitted and counted, since
+emitting them unconstrained would make them freely fireable — the opposite of the intent.
 
 ## Catalysis is a relation, not a list
 

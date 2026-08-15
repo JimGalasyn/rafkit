@@ -3,6 +3,25 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added — PNML export
+
+- **`to_pnml` / `write_pnml`** — export to PNML (ISO/IEC 15909-2), making these networks
+  readable by Petri net editors, model checkers and unfolding tools. Catalysts become
+  self-loops, alternative catalyst sets become separate transitions (a transition preset
+  is a conjunction), and food places get source transitions so food cannot run out.
+- What P/T nets cannot express is reported rather than dropped: inhibition goes in a
+  `toolspecific` annotation with an in-file warning that ignoring it yields a different
+  system, and reactions requiring a catalyst nothing provides are omitted and counted.
+
+### Fixed
+
+- The PNML header comment could contain `--`, which is illegal inside an XML comment and
+  made the whole document unparseable. The header is prepended as raw XML and so bypasses
+  ElementTree's escaping; it is now sanitised. Found by validating output against an
+  independent PNML reader, not by inspection — the export itself was silent.
+
 ## [0.3.0] — 2026-08-15
 
 ### Added — inhibition

@@ -1,0 +1,139 @@
+"""Export to PNML, the ISO/IEC 15909-2 Petri net interchange format.
+
+A catalytic reaction network *is* a Petri net: species are places, reactions are
+transitions, molecule counts are tokens. Exporting makes these networks readable by the
+Petri net ecosystem -- editors, model checkers, and the unfolding tools that compute the
+causal DAG of a run.
+
+Three things in the RAF model have no direct Place/Transition equivalent, and each is
+handled explicitly rather than silently:
+
+**Catalysis becomes a self-loop.** P/T nets have no read arc, so a catalyst is written
+as a pair of arcs, place -> transition -> place: the token is consumed and immediately
+returned, which is behaviourally what a catalyst does.
+
+**Alternative catalyst sets become separate transitions.** A transition's preset is a
+conjunction, so it cannot express "either of these sets". A reaction with `k` catalyst
+sets is emitted as `k` transitions sharing reactants and products, each with self-loops
+for one set. They are named ``r1``, ``r1#2``, ``r1#3`` … so the grouping survives.
+
+**Food becomes a source transition.** RAF food is inexhaustible, which no initial
+marking expresses: a marking of *n* deadlocks after *n* uses. Each food place therefore
+gets a source transition with an empty preset, which can always fire.
+
+Not expressible, and reported rather than dropped:
+
+* **Inhibition** has no standard P/T representation. Inhibitor arcs exist in extended
+  formalisms but not in the ``ptnet`` grammar, so they are written as a
+  ``<toolspecific>`` annotation. A tool that ignores it will read a net **without** the
+  inhibition, which is a *different system* -- so `to_pnml` says so in a comment.
+* **χ = ∅** ("must be catalysed, and nothing does") is a RAF-theoretic condition, not a
+  Petri net one. Such reactions can never fire in any RAF, and emitting them as
+  unconstrained transitions would make them freely fireable -- the opposite. They are
+  omitted, and counted in the header comment.
+"""
+from __future__ import annotations
+
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+PNML_NS = "http://www.pnml.org/version-2009/grammar/pnml"
+PTNET = "http://www.pnml.org/version-2009/grammar/ptnet"
+
+
+def _el(parent, tag, **attrs):
+    return ET.SubElement(parent, tag, {k: str(v) for k, v in attrs.items()})
+
+
+def _named(parent, text):
+    name = _el(parent, "name")
+    _el(name, "text").text = text
+    return name
+
+
+def to_pnml(net, net_id: str = "rafkit", food_sources: bool = True) -> str:
+    """Serialise a network to PNML text.
+
+    `food_sources` adds a source transition per food place so that food is
+    inexhaustible, matching RAF semantics. Turn it off to get a net whose food is
+    limited to its initial marking -- which is a different system, and will deadlock.
+    """
+    inhibitors = getattr(net, "inhibitors", ()) or ((),) * net.n_reactions
+    names = getattr(net, "names", None) or [f"r{i + 1}" for i in range(net.n_reactions)]
+
+    root = ET.Element("pnml", {"xmlns": PNML_NS})
+    pnet = _el(root, "net", id=net_id, type=PTNET)
+    _named(pnet, net_id)
+    page = _el(pnet, "page", id="page1")
+
+    for m, mol in enumerate(net.molecules):
+        place = _el(page, "place", id=f"p{m}")
+        _named(place, mol)
+        marking = _el(place, "initialMarking")
+        _el(marking, "text").text = "1" if m in net.food else "0"
+
+    arc_id = 0
+
+    def arc(src, dst):
+        nonlocal arc_id
+        arc_id += 1
+        a = _el(page, "arc", id=f"a{arc_id}", source=src, target=dst)
+        insc = _el(a, "inscription")
+        _el(insc, "text").text = "1"
+
+    skipped = 0
+    for r in range(net.n_reactions):
+        chi = net.catalysts[r]
+        if not chi:
+            skipped += 1            # must be catalysed, nothing does: cannot ever fire
+            continue
+        for k, catalyst_set in enumerate(sorted(chi, key=lambda u: sorted(u))):
+            tid = f"t{r}" if k == 0 else f"t{r}_{k}"
+            label = names[r] if k == 0 else f"{names[r]}#{k + 1}"
+            trans = _el(page, "transition", id=tid)
+            _named(trans, label)
+            if inhibitors[r]:
+                ts = _el(trans, "toolspecific", tool="rafkit", version="1")
+                _el(ts, "inhibitors").text = " ".join(
+                    sorted(net.molecules[x] for x in inhibitors[r]))
+            for x in net.reactants(r):
+                arc(f"p{x}", tid)
+            for x in net.products(r):
+                arc(tid, f"p{x}")
+            for c in catalyst_set:            # read arc, as a self-loop
+                arc(f"p{c}", tid)
+                arc(tid, f"p{c}")
+
+    if food_sources:
+        for m in sorted(net.food):
+            tid = f"src{m}"
+            trans = _el(page, "transition", id=tid)
+            _named(trans, f"source:{net.molecules[m]}")
+            arc(tid, f"p{m}")
+
+    ET.indent(root, space="  ")
+    body = ET.tostring(root, encoding="unicode")
+    notes = [f"Generated by rafkit. {net.n_molecules} species, "
+             f"{net.n_reactions} reactions."]
+    if skipped:
+        notes.append(f"{skipped} reaction(s) omitted: they require a catalyst and "
+                     f"nothing catalyses them, so they can never fire.")
+    if any(inhibitors):
+        notes.append("Inhibition is recorded in a toolspecific element only; the "
+                     "ptnet grammar has no inhibitor arc. A tool that ignores it "
+                     "reads a DIFFERENT system, without the inhibition.")
+    if food_sources:
+        notes.append("Food places have source transitions, so food is inexhaustible.")
+    # A comment may not contain "--" anywhere, nor end with "-". Sanitising here
+    # rather than trusting the call sites: this text is prepended as raw XML, so it
+    # bypasses ElementTree's escaping entirely, and an unescaped double hyphen makes
+    # the whole document unparseable. Found by an independent PNML reader, not by us.
+    safe = [n.replace("--", "\u2014").rstrip("-") for n in notes]
+    header = "<?xml version='1.0' encoding='UTF-8'?>\n<!--\n  " + \
+             "\n  ".join(safe) + "\n-->\n"
+    return header + body + "\n"
+
+
+def write_pnml(net, path: str | Path, **kwargs) -> None:
+    """Write a network to a PNML file."""
+    Path(path).write_text(to_pnml(net, **kwargs))
