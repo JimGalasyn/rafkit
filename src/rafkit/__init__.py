@@ -16,6 +16,8 @@ from rafkit.binary_polymer import BinaryPolymerNetwork, binary_polymer
 from rafkit.catalysis import catalysing_molecules, is_catalysed, normalise
 from rafkit.crs import parse_crs, read_crs, to_crs, write_crs
 from rafkit.gillespie import Trajectory, propensities, simulate
+from rafkit.inhibition import (classes_from_inhibitors, is_uninhibited, is_uraf,
+                               max_urafs, support)
 from rafkit.network import ReactionNetwork
 from rafkit.raf import (
     RafResult, catrenet_strictly_autocatalytic, core_raf, exploitability,
@@ -33,4 +35,5 @@ __all__ = [
     "is_catalysed", "catalysing_molecules", "normalise",
     "parse_crs", "read_crs", "to_crs", "write_crs",
     "simulate", "propensities", "Trajectory",
+    "max_urafs", "is_uraf", "is_uninhibited", "support", "classes_from_inhibitors",
 ]

@@ -88,6 +88,7 @@ counted as **one** catalysed reaction, not two. Use `net.catalysis_level` — no
 | `ReactionNetwork` | arbitrary catalytic reaction systems, same protocol |
 | `read_crs` / `write_crs` | CatReNet's CRS interchange format |
 | `simulate` | Gillespie direct method — watch subRAFs seed themselves into existence |
+| `max_urafs` | uninhibited RAFs, when a molecule can prevent a reaction |
 
 Every algorithm carries hand-computed known-answer tests, because a RAF algorithm that
 is subtly wrong produces plausible numbers rather than errors.
@@ -113,8 +114,28 @@ last two rows.
 Constructors still accept a plain iterable of molecules and normalise it, so simple
 systems stay simple to write.
 
-**Still not representable:** inhibition (Hordijk & Steel 2012, Part II), where a
-molecule can *prevent* a reaction.
+## Inhibition
+
+A molecule can prevent a reaction. `max_urafs` returns the **uninhibited RAFs** of
+Hordijk & Steel (2012), and returns a *collection* rather than one set, because
+inhibition destroys the monotonicity that makes a maximal RAF unique — there is no
+"the" maximal u-RAF.
+
+```
+Food: a, b
+r1 : a + b [a] {d} => c      # inhibited by d
+r2 : a + b [b] {c} => d      # inhibited by c
+```
+
+Two maximal u-RAFs, `{r1}` and `{r2}`: each is an RAF whose support avoids its own
+inhibitor, and their union is an RAF that fails the uninhibited condition.
+
+Deciding whether a u-RAF exists is NP-complete, but the problem is fixed-parameter
+tractable in *k*, the number of inhibition classes — and **k is a property of how you
+encode inhibition, not of the chemistry.** `classes_from_inhibitors` groups by
+inhibiting *molecule*, so *k* is the number of distinct inhibitors rather than the
+number of inhibited reactions, which is the difference between `2^k` being feasible
+and not.
 
 ## Notes on irreducible cores
 

@@ -43,6 +43,12 @@ class ReactionNetwork:
     reaction_pairs: tuple[tuple[tuple[int, ...], tuple[int, ...]], ...]
     catalysts: tuple[frozenset[int], ...]
     names: tuple[str, ...] = ()
+    inhibitors: tuple[frozenset[int], ...] = ()
+    """Per reaction, the molecules that inhibit it (CatReNet's model and CRS form).
+
+    `rafkit.inhibition.classes_from_inhibitors` converts this into the (X_i, R_i)
+    classes the algorithm needs, grouping by molecule to keep k small.
+    """
 
     def __post_init__(self):
         object.__setattr__(self, "catalysts",
@@ -51,6 +57,12 @@ class ReactionNetwork:
             raise ValueError(
                 f"{len(self.catalysts)} catalyst sets for "
                 f"{len(self.reaction_pairs)} reactions")
+        if not self.inhibitors:
+            object.__setattr__(self, "inhibitors",
+                               (frozenset(),) * len(self.reaction_pairs))
+        else:
+            object.__setattr__(self, "inhibitors",
+                               tuple(frozenset(i) for i in self.inhibitors))
         if not self.names:
             object.__setattr__(
                 self, "names", tuple(f"r{i + 1}" for i in range(len(self.reaction_pairs))))

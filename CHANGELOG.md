@@ -3,6 +3,31 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added — inhibition
+
+- **`max_urafs`** — uninhibited RAFs (Hordijk & Steel 2012, Part II), by their
+  theorem 1. Returns a **collection**: inhibition destroys the monotonicity that makes
+  a maximal RAF unique, so there is no "the" maximal u-RAF, and the signature says so
+  rather than a docstring.
+- `is_uraf`, `is_uninhibited`, `support`, and `classes_from_inhibitors`, which groups
+  by inhibiting *molecule* so that *k* — the entire cost, since the algorithm is
+  `2^k` — is the number of distinct inhibitors rather than of inhibited reactions.
+- `ReactionNetwork.inhibitors`, per-reaction, matching CatReNet's model.
+- CRS gains CatReNet's inhibitor syntax: a brace group **after** the catalyst bracket,
+  `r1 : a + b [c] {d e} -> x`, and round-trips it.
+
+### Divergence from CatReNet, verified
+
+- Once inhibitors are present, CatReNet's `maxRaf` filters inhibited reactions *during*
+  the RAF computation, where Hordijk & Steel define an RAF without reference to
+  inhibition and add the uninhibited condition separately. On a two-reaction network
+  where each reaction is inhibited by the other's product, CatReNet's `maxRaf` and
+  `uRaf` both return nothing while **two** maximal u-RAFs exist by the definition.
+  Checked by hand against (u-1) and (u-2), and by brute-force enumeration of every
+  subset on seven generated networks.
+
 ## [0.2.0] — 2026-08-15
 
 ### Added

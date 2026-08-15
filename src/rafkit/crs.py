@@ -20,7 +20,10 @@ Catalysts are alternatives, any one of which suffices. A braced group is a
 **conjunctive** requirement -- `[{a,d}, e]` means *a and d together*, or *e* -- which
 is the notation Huson, Xavier & Steel (2024) use. Two edge cases carry meaning and are
 not interchangeable: `[]` means the reaction **must** be catalysed and nothing does so,
-while `[{}]` means it **may proceed uncatalysed**. A reversible reaction is read as **two** reactions, forward and
+while `[{}]` means it **may proceed uncatalysed**.
+
+A brace group **after** the catalyst bracket lists **inhibitors**, space- or
+comma-separated, following CatReNet: `r1 : a + b [c] {d e} -> x`. A reversible reaction is read as **two** reactions, forward and
 reverse, sharing a catalyst set -- which is the reading its own generator uses.
 
 `X + X -> Y` is written `X ... -> Y`, with the repeated reactant collapsed. Since
@@ -76,44 +79,54 @@ def parse_crs(text: str) -> ReactionNetwork:
             continue
         name, body = m.group("name"), m.group("body")
 
+        inhib: list[str] = []
         cats: list[list[str]] = []
         if "[" in body:
             pre, rest = body.split("[", 1)
             inside, post = rest.split("]", 1)
             cats = _parse_catalysts(inside)
             body = pre + " " + post
+            # A brace group AFTER the catalysts is the inhibitor list (CatReNet).
+            m_inh = re.search(r"\{([^}]*)\}", body)
+            if m_inh:
+                inhib = [t for t in re.split(r"[,\s]+", m_inh.group(1)) if t]
+                body = body[:m_inh.start()] + " " + body[m_inh.end():]
 
         arrow = _ARROW.search(body)
         if not arrow:
             continue
         lhs, rhs = body[:arrow.start()], body[arrow.end():]
-        parsed.append((name, _split_list(lhs), _split_list(rhs), cats,
+        parsed.append((name, _split_list(lhs), _split_list(rhs), cats, inhib,
                        arrow.group(1) in ("<->", "<=>")))
 
     # Stable molecule indexing: food first, then order of appearance.
     index: dict[str, int] = {}
     for n in food_names:
         index.setdefault(n, len(index))
-    for _, lhs, rhs, cats, _ in parsed:
-        for n in (*lhs, *rhs, *(x for g in cats for x in g)):
+    for _, lhs, rhs, cats, inhib, _ in parsed:
+        for n in (*lhs, *rhs, *(x for g in cats for x in g), *inhib):
             index.setdefault(n, len(index))
 
-    pairs, catalysts, names = [], [], []
-    for name, lhs, rhs, cats, reversible in parsed:
+    pairs, catalysts, names, inhibitors = [], [], [], []
+    for name, lhs, rhs, cats, inhib, reversible in parsed:
         cat = frozenset(frozenset(index[c] for c in g) for g in cats)
+        inh = frozenset(index[x] for x in inhib)
         fwd = (tuple(index[x] for x in lhs), tuple(index[x] for x in rhs))
         pairs.append(fwd); catalysts.append(cat); names.append(name)
+        inhibitors.append(inh)
         if reversible:
             pairs.append((fwd[1], fwd[0]))
             catalysts.append(cat)
             names.append(f"{name}_rev")
+            inhibitors.append(inh)
 
     molecules = tuple(sorted(index, key=index.get))
     return ReactionNetwork(molecules=molecules,
                            food=frozenset(index[n] for n in food_names),
                            reaction_pairs=tuple(pairs),
                            catalysts=tuple(catalysts),
-                           names=tuple(names))
+                           names=tuple(names),
+                           inhibitors=tuple(inhibitors))
 
 
 def read_crs(path: str | Path) -> ReactionNetwork:
@@ -140,7 +153,11 @@ def to_crs(net, comment: str = "") -> str:
         lhs = " + ".join(dict.fromkeys(name(x) for x in net.reactants(r)))
         rhs = " + ".join(dict.fromkeys(name(x) for x in net.products(r)))
         cats = _format_catalysts(net, r)
-        out.append(f"{names[r]} : {lhs} [{cats}] => {rhs}")
+        inh = getattr(net, "inhibitors", ())
+        inh_s = ""
+        if inh and inh[r]:
+            inh_s = " {" + " ".join(sorted(name(x) for x in inh[r])) + "}"
+        out.append(f"{names[r]} : {lhs} [{cats}]{inh_s} => {rhs}")
     out.append("")
     return "\n".join(out)
 
