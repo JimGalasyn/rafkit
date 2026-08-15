@@ -28,6 +28,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from rafkit.binary_polymer import BinaryPolymerNetwork
+from rafkit.catalysis import (catalysing_molecules, is_catalysed,
+                              requires_non_food)
 
 
 @dataclass(frozen=True)
@@ -80,7 +82,8 @@ def max_raf(net: BinaryPolymerNetwork) -> RafResult:
         have = _closure(net, current)
         keep = frozenset(
             r for r in current
-            if all(x in have for x in net.reactants(r)) and (net.catalysts[r] & have)
+            if all(x in have for x in net.reactants(r))
+            and is_catalysed(net.catalysts[r], have)
         )
         if keep == current:
             return RafResult(reactions=current, closure=have, n_rounds=rounds)
@@ -109,7 +112,7 @@ def exploitability(net: BinaryPolymerNetwork, raf: RafResult) -> dict:
     reactants_in_raf = set()
     for r in raf.reactions:
         reactants_in_raf.update(net.reactants(r))
-        catalyses_in_raf |= (net.catalysts[r] & products)
+        catalyses_in_raf |= (catalysing_molecules(net.catalysts[r]) & products)
 
     strict = products - catalyses_in_raf
     unused = strict - reactants_in_raf
@@ -120,7 +123,8 @@ def exploitability(net: BinaryPolymerNetwork, raf: RafResult) -> dict:
     for m in strict:
         survives = frozenset(
             r for r in raf.reactions
-            if m not in net.reactions[r] and net.catalysts[r] & (raf.closure - {m})
+            if m not in net.reactions[r]
+            and is_catalysed(net.catalysts[r], raf.closure - {m})
         )
         sub = RafResult(reactions=survives, closure=_closure(net, survives),
                         n_rounds=0)
@@ -151,10 +155,11 @@ def _refine(net: BinaryPolymerNetwork, reactions: frozenset[int],
     current = reactions
     while True:
         have = _closure(net, current)
-        pool = have - net.food if strict else have
         keep = frozenset(
             r for r in current
-            if all(x in have for x in net.reactants(r)) and (net.catalysts[r] & pool)
+            if all(x in have for x in net.reactants(r))
+            and (requires_non_food(net.catalysts[r], have, net.food) if strict
+                 else is_catalysed(net.catalysts[r], have))
         )
         if keep == current:
             return current
@@ -271,7 +276,7 @@ def is_food_catalysed(net: BinaryPolymerNetwork, core: frozenset[int]) -> bool:
     """
     if not core:
         return False
-    return all(net.catalysts[r] & net.food for r in core)
+    return all(is_catalysed(net.catalysts[r], net.food) for r in core)
 
 
 def catrenet_strictly_autocatalytic(net, raf: RafResult | None = None) -> frozenset[int]:
@@ -296,8 +301,8 @@ def catrenet_strictly_autocatalytic(net, raf: RafResult | None = None) -> frozen
         raf = max_raf(net)
     if raf.is_empty:
         return frozenset()
-    pool = raf.closure - net.food
-    return frozenset(r for r in raf.reactions if net.catalysts[r] & pool)
+    return frozenset(r for r in raf.reactions
+                     if requires_non_food(net.catalysts[r], raf.closure, net.food))
 
 
 def core_raf(net, reactions=None) -> frozenset[int]:

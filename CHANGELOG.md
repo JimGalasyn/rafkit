@@ -35,11 +35,26 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   contained in the union of the other two — the subtlety that makes pairwise results
   fail to extend to triples.
 
-### Known limitations, newly documented
+### Changed — catalysis is now a relation
 
-- Catalysis is simple and disjunctive; conjunctive catalyst sets and the
-  χ = {∅} / χ = ∅ distinction are not representable. Two further published worked
-  examples are blocked on this. See the README.
+- **`catalysts[r]` is a set of alternative catalyst *sets*** (Huson, Xavier & Steel
+  2024's χ), not a flat set of molecules. Any one set being wholly present suffices;
+  each set is a conjunctive requirement. This expresses two things the flat form could
+  not: `{{a,d},{e}}` meaning (*a* and *d*) or *e*, and the difference between `{}`
+  ("must be catalysed, nothing does") and `{frozenset()}` ("may proceed uncatalysed").
+- **Constructors normalise**, so passing a plain iterable of molecules still works and
+  still means what it did. Code that *reads* `net.catalysts[r]` as a flat set of
+  molecules must change — use `is_catalysed(chi, available)` or
+  `catalysing_molecules(chi)`.
+- CRS gains brace syntax for conjunctive groups, plus `[]` and `[{}]` for the two
+  empty forms.
+
+### Validated against two further published examples, previously blocked
+
+- **Example 3.2** (conjunctive catalysis): the four published RAFs found exactly, and
+  `{r1,r2}` confirmed as the only strictly autocatalytic one.
+- **The §2.4 system**: published maxRAF `{r1,r2,r5}` and unique iRAF `{r1,r2}`, with a
+  test that the two empty-catalyst forms are not interchangeable.
 
 ### Pending before release
 

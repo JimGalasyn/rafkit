@@ -24,6 +24,7 @@ import numpy as np
 import pytest
 
 from rafkit import binary_polymer, max_raf, simulate
+from rafkit.catalysis import is_catalysed
 from rafkit.gillespie import catalytically_reachable
 
 # Hordijk & Steel (2012) §"A realistic example".
@@ -45,7 +46,7 @@ def test_food_catalysed_reactions_never_need_seeding(seed):
     """Criterion 1. Food never depletes, so a reaction with a food catalyst always has
     one: it can run from t=0 and can never fire uncatalysed. Exact, not statistical."""
     net, raf, tr = _run(seed)
-    food_catalysed = [r for r in raf if net.catalysts[r] & net.food]
+    food_catalysed = [r for r in raf if is_catalysed(net.catalysts[r], net.food)]
     assert food_catalysed, "no always-on reactions in this network"
     for r in food_catalysed:
         assert r not in tr.first_uncatalysed, (
@@ -77,5 +78,6 @@ def test_the_static_prediction_is_tighter_than_the_naive_one():
     from rafkit.raf import _closure
     net = binary_polymer(**PUBLISHED, rng=np.random.default_rng(95), cleavage=True)
     raf = sorted(max_raf(net).reactions)
-    naive = _closure(net, frozenset(r for r in raf if net.catalysts[r] & net.food))
+    naive = _closure(net, frozenset(r for r in raf
+                                    if is_catalysed(net.catalysts[r], net.food)))
     assert naive < catalytically_reachable(net, raf)

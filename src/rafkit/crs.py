@@ -14,7 +14,13 @@ The format is a food line and one line per reaction::
     r2 : ab [aa] => abab
 
 `[...]` lists catalysts, `<->` marks a reversible reaction and `=>` (or `->`) an
-irreversible one. A reversible reaction is read as **two** reactions, forward and
+irreversible one.
+
+Catalysts are alternatives, any one of which suffices. A braced group is a
+**conjunctive** requirement -- `[{a,d}, e]` means *a and d together*, or *e* -- which
+is the notation Huson, Xavier & Steel (2024) use. Two edge cases carry meaning and are
+not interchangeable: `[]` means the reaction **must** be catalysed and nothing does so,
+while `[{}]` means it **may proceed uncatalysed**. A reversible reaction is read as **two** reactions, forward and
 reverse, sharing a catalyst set -- which is the reading its own generator uses.
 
 `X + X -> Y` is written `X ... -> Y`, with the repeated reactant collapsed. Since
@@ -39,6 +45,20 @@ def _split_list(text: str) -> list[str]:
     return [s for s in (t.strip() for t in re.split(r"[,+]", text)) if s]
 
 
+def _parse_catalysts(text: str) -> list[list[str]]:
+    """Parse a catalyst list into alternative sets, honouring braced conjunctions.
+
+    Splitting on commas alone is wrong the moment a braced group appears -- `{a,d}`
+    would become `{a` and `d}` -- so groups are pulled out first.
+    """
+    groups, rest = [], text
+    for m in re.finditer(r"\{([^}]*)\}", text):
+        groups.append(_split_list(m.group(1)))     # may be empty: {} means "uncatalysed"
+    rest = re.sub(r"\{[^}]*\}", " ", text)
+    groups += [[name] for name in _split_list(rest)]
+    return groups
+
+
 def parse_crs(text: str) -> ReactionNetwork:
     """Parse CRS text into a `ReactionNetwork`."""
     food_names: list[str] = []
@@ -56,11 +76,11 @@ def parse_crs(text: str) -> ReactionNetwork:
             continue
         name, body = m.group("name"), m.group("body")
 
-        cats: list[str] = []
+        cats: list[list[str]] = []
         if "[" in body:
             pre, rest = body.split("[", 1)
             inside, post = rest.split("]", 1)
-            cats = _split_list(inside)
+            cats = _parse_catalysts(inside)
             body = pre + " " + post
 
         arrow = _ARROW.search(body)
@@ -75,12 +95,12 @@ def parse_crs(text: str) -> ReactionNetwork:
     for n in food_names:
         index.setdefault(n, len(index))
     for _, lhs, rhs, cats, _ in parsed:
-        for n in (*lhs, *rhs, *cats):
+        for n in (*lhs, *rhs, *(x for g in cats for x in g)):
             index.setdefault(n, len(index))
 
     pairs, catalysts, names = [], [], []
     for name, lhs, rhs, cats, reversible in parsed:
-        cat = frozenset(index[c] for c in cats)
+        cat = frozenset(frozenset(index[c] for c in g) for g in cats)
         fwd = (tuple(index[x] for x in lhs), tuple(index[x] for x in rhs))
         pairs.append(fwd); catalysts.append(cat); names.append(name)
         if reversible:
@@ -119,10 +139,19 @@ def to_crs(net, comment: str = "") -> str:
     for r in range(net.n_reactions):
         lhs = " + ".join(dict.fromkeys(name(x) for x in net.reactants(r)))
         rhs = " + ".join(dict.fromkeys(name(x) for x in net.products(r)))
-        cats = ",".join(sorted(name(c) for c in net.catalysts[r]))
+        cats = _format_catalysts(net, r)
         out.append(f"{names[r]} : {lhs} [{cats}] => {rhs}")
     out.append("")
     return "\n".join(out)
+
+
+def _format_catalysts(net, r: int) -> str:
+    """Render a reaction's catalyst sets, using braces only where they are needed."""
+    parts = []
+    for U in sorted(net.catalysts[r], key=lambda u: sorted(u)):
+        names = sorted(net.molecules[c] for c in U)
+        parts.append(names[0] if len(names) == 1 else "{" + ",".join(names) + "}")
+    return ",".join(parts)
 
 
 def write_crs(net, path: str | Path, comment: str = "") -> None:

@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from rafkit.catalysis import is_catalysed
+
 UNCATALYSED_FACTOR = 20.0   # Hordijk & Steel (2012): "a small reduction factor of 20"
 FOOD_FLOOR = 5              # "replenished when they fall below a concentration of five"
 
@@ -95,11 +97,12 @@ def propensities(net, counts: np.ndarray, *,
     """
     out = np.zeros(net.n_reactions)
     allowed = range(net.n_reactions) if reactions is None else reactions
+    present = frozenset(np.flatnonzero(counts).tolist())
     for r in allowed:
         combos = _pair_count(counts, net.reactants(r))
         if combos <= 0:
             continue
-        catalysed = any(counts[c] > 0 for c in net.catalysts[r])
+        catalysed = is_catalysed(net.catalysts[r], present)
         out[r] = combos if catalysed else combos / uncatalysed_factor
     return out
 
@@ -140,7 +143,8 @@ def simulate(net, *, n_events: int = 25_000, rng=None,
 
         if r not in first_fired:
             first_fired[r] = t
-        if r not in first_uncat and not any(counts[c] > 0 for c in net.catalysts[r]):
+        if r not in first_uncat and not is_catalysed(
+                net.catalysts[r], frozenset(np.flatnonzero(counts).tolist())):
             first_uncat[r] = t
 
         for x in net.reactants(r):
@@ -183,7 +187,8 @@ def catalytically_reachable(net, reactions=None) -> frozenset[int]:
     while True:
         enabled = frozenset(
             r for r in allowed
-            if all(x in avail for x in net.reactants(r)) and (net.catalysts[r] & avail)
+            if all(x in avail for x in net.reactants(r))
+            and is_catalysed(net.catalysts[r], avail)
         )
         nxt = _closure(net, enabled)
         if nxt == avail:

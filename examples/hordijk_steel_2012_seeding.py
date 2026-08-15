@@ -25,6 +25,7 @@ from __future__ import annotations
 import numpy as np
 
 from rafkit import binary_polymer, max_raf, simulate
+from rafkit.catalysis import catalysing_molecules, is_catalysed
 from rafkit.gillespie import catalytically_reachable
 
 PUBLISHED = dict(max_len=5, food_len=2, p=0.0045)   # Hordijk & Steel (2012)
@@ -47,11 +48,11 @@ def main() -> None:
     for r in sorted({r % (net.n_reactions // 2) for r in raf}):
         a, b = net.reactants(r)
         p = net.products(r)[0]
-        cats = sorted(nm(c) for c in net.catalysts[r])
+        cats = sorted(nm(c) for c in catalysing_molecules(net.catalysts[r]))
         tags = ""
-        if net.catalysts[r] & net.food:
+        if is_catalysed(net.catalysts[r], net.food):
             tags += "  [always-on: food catalyst]"
-        if p in net.catalysts[r]:
+        if p in catalysing_molecules(net.catalysts[r]):
             tags += "  [self-catalysed: must be seeded]"
         print(f"  {nm(a):>5s} + {nm(b):<5s} <-> {nm(p):<6s} cat={str(cats):<22s}{tags}")
 

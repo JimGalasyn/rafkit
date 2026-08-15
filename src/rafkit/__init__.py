@@ -13,6 +13,7 @@ See the README for the calibration against Steel, Hordijk & Smith (2012) and for
 CatReNet interoperability.
 """
 from rafkit.binary_polymer import BinaryPolymerNetwork, binary_polymer
+from rafkit.catalysis import catalysing_molecules, is_catalysed, normalise
 from rafkit.crs import parse_crs, read_crs, to_crs, write_crs
 from rafkit.gillespie import Trajectory, propensities, simulate
 from rafkit.network import ReactionNetwork
@@ -29,6 +30,7 @@ __all__ = [
     "RafResult", "max_raf", "max_raf_strict", "sample_irrraf", "irrraf_census",
     "exploitability", "is_food_catalysed", "catrenet_strictly_autocatalytic",
     "core_raf", "has_unique_irraf",
+    "is_catalysed", "catalysing_molecules", "normalise",
     "parse_crs", "read_crs", "to_crs", "write_crs",
     "simulate", "propensities", "Trajectory",
 ]

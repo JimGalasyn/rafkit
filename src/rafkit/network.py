@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from rafkit.catalysis import normalise
+
 
 @dataclass(frozen=True)
 class ReactionNetwork:
@@ -43,6 +45,8 @@ class ReactionNetwork:
     names: tuple[str, ...] = ()
 
     def __post_init__(self):
+        object.__setattr__(self, "catalysts",
+                           tuple(normalise(c) for c in self.catalysts))
         if len(self.catalysts) != len(self.reaction_pairs):
             raise ValueError(
                 f"{len(self.catalysts)} catalyst sets for "

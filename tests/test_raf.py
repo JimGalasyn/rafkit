@@ -124,6 +124,7 @@ class TestGenerator:
 
     def test_p_one_catalyses_everything(self):
         n = binary_polymer(max_len=4, food_len=2, p=1.0, rng=np.random.default_rng(0))
+        # p=1.0: every molecule catalyses every reaction, one singleton set each.
         assert all(len(c) == n.n_molecules for c in n.catalysts)
 
     def test_seeded_generation_is_reproducible(self):

@@ -123,3 +123,75 @@ class TestCoreRaf:
         net = parse_crs("Food: a, b\nr1 : a + b [z] => c\n")
         assert max_raf(net).is_empty
         assert not has_unique_irraf(net)
+
+
+# ---------------------------------------------------------------------------
+# Huson, Xavier & Steel (2024), Example 3.2 — conjunctive catalysis.
+#   r1 : a + b [{a,d}]    -> e      catalyst set {a,d}: BOTH required
+#   r2 : b + c [{a,b}, e] -> d      {a,b} together, or e alone
+#   r3 : d     [{a,b}]    -> c
+EXAMPLE_3_2 = """
+Food: a, b, c
+r1 : a + b [{a,d}]    => e
+r2 : b + c [{a,b},e]  => d
+r3 : d     [{a,b}]    => c
+"""
+
+
+class TestConjunctiveCatalysisExample:
+    """"{r2}, {r1,r2}, {r2,r3} and {r1,r2,r3} are RAFs, however {r1,r2} is the only
+    strictly autocatalytic RAF."
+
+    Unrepresentable before conjunctive catalyst sets existed in this library.
+    """
+
+    def test_exactly_the_four_published_rafs(self):
+        net = parse_crs(EXAMPLE_3_2)
+        got = {frozenset(net.names[r] for r in s) for s in _all_raf_subsets(net)}
+        assert got == {
+            frozenset({"r2"}),
+            frozenset({"r1", "r2"}),
+            frozenset({"r2", "r3"}),
+            frozenset({"r1", "r2", "r3"}),
+        }
+
+    def test_the_only_strictly_autocatalytic_raf_is_r1r2(self):
+        from rafkit import max_raf_strict
+        net = parse_crs(EXAMPLE_3_2)
+        assert _named(net, max_raf_strict(net).reactions) == {"r1", "r2"}
+
+
+# ---------------------------------------------------------------------------
+# Huson, Xavier & Steel (2024) §2.4 — the system Example 3.1 traces the algorithm on.
+# It needs BOTH new features: conjunctive sets, and the distinction between
+#   r2 : chi = {{}}  "may proceed uncatalysed"   and
+#   r3 : chi = {}    "must be catalysed, and nothing does"
+# which a flat set of catalysts collapses into one.
+SECTION_2_4 = """
+Food: a, b
+r1 : a + a [{c,d},e] => c
+r2 : b + c [{}]      => d
+r3 : b + b []        => e
+r4 : a + e [a]       => b
+r5 : c + d [d]       => g + g
+"""
+
+
+class TestUncatalysedDistinctionExample:
+    """"This system has {r1, r2, r5} as its maxRAF, and {r1, r2} as its unique iRAF." """
+
+    def test_the_published_maxraf(self):
+        net = parse_crs(SECTION_2_4)
+        assert _named(net, max_raf(net).reactions) == {"r1", "r2", "r5"}
+
+    def test_the_published_unique_iraf(self):
+        net = parse_crs(SECTION_2_4)
+        assert has_unique_irraf(net)
+        assert _named(net, core_raf(net)) == {"r1", "r2"}
+
+    def test_the_two_empty_catalyst_forms_are_not_interchangeable(self):
+        """r2 (may run uncatalysed) is in the maxRAF; r3 (must be catalysed, nothing
+        does) can never be. Collapsing them would put both in or both out."""
+        net = parse_crs(SECTION_2_4)
+        names = _named(net, max_raf(net).reactions)
+        assert "r2" in names and "r3" not in names

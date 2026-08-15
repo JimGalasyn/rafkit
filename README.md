@@ -92,21 +92,29 @@ counted as **one** catalysed reaction, not two. Use `net.catalysis_level` — no
 Every algorithm carries hand-computed known-answer tests, because a RAF algorithm that
 is subtly wrong produces plausible numbers rather than errors.
 
-## Limitations
+## Catalysis is a relation, not a list
 
-Catalysis here is **simple and disjunctive**: `catalysts[r]` is a set of molecules, any
-one of which suffices. Two things in the current literature cannot be expressed, both
-from Huson, Xavier & Steel (2024), whose subject is precisely richer catalysis:
+`catalysts[r]` is a set of **alternative catalyst sets**, following Huson, Xavier &
+Steel (2024). Any one set being fully present suffices, and each set is a conjunctive
+requirement:
 
-- **Conjunctive catalyst sets.** `r : a + b [{a,d}, e] -> c` — meaning *a and d
-  together*, **or** *e* — needs sets of sets. Their Example 3.2 and their §2.4 system
-  both use this, so neither is in the test suite despite having published answers.
-- **"May proceed uncatalysed" (χ = {∅}) versus "must be catalysed" (χ = ∅).** An empty
-  catalyst set here means the second; the first has no representation, and the
-  distinction is load-bearing in their §2.4 system.
+| `catalysts[r]` | meaning |
+|---|---|
+| `{{a}, {b}}` | *a* **or** *b* — the simple case, and what a flat list of catalysts meant |
+| `{{a, d}, {e}}` | (*a* **and** *d*) **or** *e* |
+| `{}` | **must** be catalysed, and nothing does: never in a RAF |
+| `{frozenset()}` | **may proceed uncatalysed**; always satisfied |
 
-Supporting both is the natural next step for this library, and would let two more
-published worked examples become tests.
+The last two rows are a real distinction rather than a technicality — in the §2.4 system
+of that paper it decides which reactions can join an RAF — and a flat list collapses
+them. In CRS, a braced group is conjunctive: `[{a,d}, e]`, with `[]` and `[{}]` for the
+last two rows.
+
+Constructors still accept a plain iterable of molecules and normalise it, so simple
+systems stay simple to write.
+
+**Still not representable:** inhibition (Hordijk & Steel 2012, Part II), where a
+molecule can *prevent* a reaction.
 
 ## Notes on irreducible cores
 

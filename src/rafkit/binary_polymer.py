@@ -44,6 +44,8 @@ from typing import Iterator
 
 import numpy as np
 
+from rafkit.catalysis import normalise
+
 
 @dataclass(frozen=True)
 class BinaryPolymerNetwork:
@@ -66,6 +68,8 @@ class BinaryPolymerNetwork:
     directions: tuple[int, ...] = ()
 
     def __post_init__(self):
+        object.__setattr__(self, "catalysts",
+                           tuple(normalise(c) for c in self.catalysts))
         if not self.directions:                      # default: all ligations
             object.__setattr__(self, "directions", (1,) * len(self.reactions))
         elif len(self.directions) != len(self.reactions):
