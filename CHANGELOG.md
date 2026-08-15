@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.3.0] — 2026-08-15
 
 ### Added — inhibition
 
@@ -35,6 +35,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   correct **without further conditions**: the uninhibited property is inherited
   downward, so every sub-RAF of a u-RAF is a u-RAF. Checked on 165 sampled cores
   across seven networks, then asserted as a test rather than assumed.
+
+### Maintenance
+
+- v0.2.0's version DOI recorded in `CITATION.cff` after minting.
 
 ### Divergence from CatReNet, verified
 
