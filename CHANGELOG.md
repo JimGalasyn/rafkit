@@ -5,6 +5,24 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — generated inhibition
+
+- **`binary_polymer(q=..., n_inhibitors=...)`** — inhibition can now be *generated*, not
+  only hand-specified. `q` is the mirror of `p`: each (eligible molecule, reaction) pair
+  becomes an inhibition edge with probability `q` (Hordijk & Steel 2012, Part II).
+  Until now the u-RAF layer could only be exercised on networks written by hand, so the
+  one ensemble the library actually generates could not be studied under inhibition.
+- **`n_inhibitors` caps `k` exactly**, and that is the point rather than a convenience:
+  `max_urafs` costs `2**k` maximal-RAF computations, so the cap is the difference between
+  a feasible u-RAF census and an impossible one. `BinaryPolymerNetwork.n_inhibiting_molecules`
+  reports the achieved `k`.
+- Inhibition is drawn on the ligation half and **shared with its reverse** under
+  `paired_catalysis`, exactly as catalysis is, so a reversible cleavage-ligation pair
+  stays one unit.
+- `q=0` is the default and leaves the catalysis draw **bit-identical**, so every result
+  measured before inhibition existed still reproduces — asserted by a test rather than
+  assumed.
+
 ### Maintenance
 
 - v0.4.0's version DOI recorded in `CITATION.cff`.

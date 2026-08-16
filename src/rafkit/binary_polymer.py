@@ -66,6 +66,7 @@ class BinaryPolymerNetwork:
     max_len: int
     food_len: int
     directions: tuple[int, ...] = ()
+    inhibitors: tuple[frozenset[int], ...] = ()
 
     def __post_init__(self):
         object.__setattr__(self, "catalysts",
@@ -76,6 +77,16 @@ class BinaryPolymerNetwork:
             raise ValueError(
                 f"directions has {len(self.directions)} entries for "
                 f"{len(self.reactions)} reactions")
+        if not self.inhibitors:
+            object.__setattr__(self, "inhibitors",
+                               (frozenset(),) * len(self.reactions))
+        elif len(self.inhibitors) != len(self.reactions):
+            raise ValueError(
+                f"inhibitors has {len(self.inhibitors)} entries for "
+                f"{len(self.reactions)} reactions")
+        else:
+            object.__setattr__(self, "inhibitors",
+                               tuple(frozenset(i) for i in self.inhibitors))
 
     def reactants(self, r: int) -> tuple[int, ...]:
         """Molecules consumed by reaction `r`, in its stored direction."""
@@ -108,6 +119,15 @@ class BinaryPolymerNetwork:
         return sum(len(c) for c in self.catalysts[:n_pairs]) / len(self.molecules)
 
     @property
+    def n_inhibiting_molecules(self) -> int:
+        """`k` in Hordijk & Steel's encoding — distinct molecules that inhibit.
+
+        This is the exponent in `max_urafs`'s `2**k` cost, not a chemistry parameter,
+        which is why `binary_polymer` lets you cap it directly.
+        """
+        return len({x for inh in self.inhibitors for x in inh})
+
+    @property
     def n_molecules(self) -> int:
         return len(self.molecules)
 
@@ -136,7 +156,9 @@ def _strings(max_len: int) -> Iterator[str]:
 def binary_polymer(max_len: int = 8, food_len: int = 2, p: float = 1e-3,
                    rng: np.random.Generator | None = None,
                    cleavage: bool = False,
-                   paired_catalysis: bool = True) -> BinaryPolymerNetwork:
+                   paired_catalysis: bool = True,
+                   q: float = 0.0,
+                   n_inhibitors: int | None = None) -> BinaryPolymerNetwork:
     """Generate one binary-polymer network with catalysis at probability `p`.
 
     `cleavage=True` adds the reverse `ab -> a + b` of every ligation, doubling the
@@ -147,6 +169,20 @@ def binary_polymer(max_len: int = 8, food_len: int = 2, p: float = 1e-3,
     reaction of Steel, Hordijk & Smith (2012), and the convention their f = p|R| is
     measured in. Set False to draw the two directions independently; that is a
     different chemistry and its f is not comparable to theirs.
+
+    `q` is the inhibition probability, the mirror of `p`: each (eligible molecule,
+    reaction) pair becomes an inhibition edge with probability `q` (Hordijk & Steel
+    2012, Part II). `q=0`, the default, leaves the network uninhibited and every
+    existing result unchanged.
+
+    `n_inhibitors` caps how many **distinct molecules** may inhibit, drawn uniformly.
+    That cap is `k` in the (X_i, R_i) encoding, and `max_urafs` costs `2**k` maximal-RAF
+    computations -- so it is the difference between a feasible u-RAF census and an
+    impossible one. Leaving it `None` makes every molecule eligible, which is faithful
+    to the model but puts `max_urafs` out of reach on any network of interesting size;
+    `is_uraf` and `is_uninhibited` stay cheap either way. Inhibition is drawn on the
+    ligation half and **shared with the reverse** under `paired_catalysis`, exactly as
+    catalysis is, so the reversible reaction remains one unit.
     """
     if max_len < 2:
         raise ValueError(f"max_len must be at least 2, got {max_len}")
@@ -154,6 +190,10 @@ def binary_polymer(max_len: int = 8, food_len: int = 2, p: float = 1e-3,
         raise ValueError(f"food_len must be in [0, max_len), got {food_len}")
     if not 0.0 <= p <= 1.0:
         raise ValueError(f"p is a probability, got {p}")
+    if not 0.0 <= q <= 1.0:
+        raise ValueError(f"q is a probability, got {q}")
+    if n_inhibitors is not None and n_inhibitors < 0:
+        raise ValueError(f"n_inhibitors must be non-negative, got {n_inhibitors}")
     rng = rng or np.random.default_rng()
 
     molecules = tuple(_strings(max_len))
@@ -184,6 +224,23 @@ def binary_polymer(max_len: int = 8, food_len: int = 2, p: float = 1e-3,
     )
     # Paired: the cleavage half re-uses its ligation's catalysts rather than redrawing.
     catalysts = drawn + drawn if (cleavage and paired_catalysis) else drawn
+
+    # Inhibition, drawn the same sparse way and over the same paired unit as catalysis.
+    # Eligibility is restricted FIRST so that k is exactly n_inhibitors, rather than
+    # whatever a q-dependent draw happens to produce.
+    if q > 0.0:
+        eligible = (np.arange(n_mol) if n_inhibitors is None else
+                    rng.choice(n_mol, size=min(n_inhibitors, n_mol), replace=False))
+        i_counts = rng.binomial(len(eligible), q, size=n_draw)
+        i_drawn = tuple(
+            frozenset(rng.choice(eligible, size=int(k), replace=False).tolist()) if k
+            else frozenset()
+            for k in i_counts
+        )
+        inhibitors = (i_drawn + i_drawn if (cleavage and paired_catalysis) else i_drawn)
+    else:
+        inhibitors = ()
     return BinaryPolymerNetwork(molecules=molecules, food=food, reactions=reactions,
                                 catalysts=catalysts, p=p, max_len=max_len,
-                                food_len=food_len, directions=directions)
+                                food_len=food_len, directions=directions,
+                                inhibitors=inhibitors)
