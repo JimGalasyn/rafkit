@@ -116,7 +116,19 @@ class BinaryPolymerNetwork:
         if not self.molecules:
             return 0.0
         n_pairs = self.n_reactions - self.n_cleavages
-        return sum(len(c) for c in self.catalysts[:n_pairs]) / len(self.molecules)
+        # Counted over the reversible PAIR: a cleavage-ligation pair is one reaction, so
+        # take the union of the two directions' catalysts. Under `paired_catalysis` the
+        # halves are identical and this is exactly the old count; it differs only where
+        # the directions were drawn separately -- as in C-BPM, where a catalyst acts on
+        # one direction only and counting the ligation half alone would miss every
+        # cleavage catalyst.
+        total = 0
+        for i in range(n_pairs):
+            both = self.catalysts[i]
+            if i + n_pairs < self.n_reactions:
+                both = both | self.catalysts[i + n_pairs]
+            total += len(both)
+        return total / len(self.molecules)
 
     @property
     def n_inhibiting_molecules(self) -> int:

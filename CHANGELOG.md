@@ -5,6 +5,28 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — C-BPM, catalysis by structure
+
+- **`complementary_polymer`** — Serra & Villani's C-BPM (*Entropy* 28(2), 184, 2026, §2.2),
+  reproduced from their construction rather than invented. A catalyst carries an **active
+  site**, a substring of itself, and acts on whatever is **complementary** to that site:
+  cleaving any polymer containing the complement, or joining a molecule whose suffix
+  complements the site's first part to one whose prefix complements its second.
+- The reaction set is **identical** to the K-model's; only the catalyst→reaction assignment
+  differs. That is the whole point — a K-catalyst's targets are independent draws, a
+  C-catalyst's all share one template.
+- Reproduces the paper's signature: at 510 species, **19 catalysts doing ~200 reactions
+  each**, against the K-model's 510 catalysts doing ~18. (They report ~400 vs ~20.)
+- ⚠ Implements their **total-chemistry** mode. The **firing-disk** mode is a different
+  construction, not a parameter of this one, and is not implemented.
+
+### Fixed
+
+- **`catalysis_level` now counts the reversible pair correctly** when the two directions
+  carry different catalysts. It takes the union across directions; under `paired_catalysis`
+  the halves are identical so every previously reported value is unchanged. Without the fix
+  a C-chemistry's cleavage catalysts were invisible to `f`.
+
 ### Added — generated inhibition
 
 - **`binary_polymer(q=..., n_inhibitors=...)`** — inhibition can now be *generated*, not
