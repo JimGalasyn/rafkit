@@ -15,6 +15,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   reactions, ~100 catalysts**, with a RAF covering >95% of the chemistry. (They report
   ~2000 species, ~40,000 reactions, *"only 100 catalysts"*, and a RAF *"often as large as
   the entire chemistry"*.)
+- **`examples/serra_villani_2026_c_chemistry.py`** reproduces their Figure 3 ensemble and
+  prints each statistic beside the published value, **including the one that does not
+  match**: reactions per catalyst comes out ~3× their ~400, because these catalysts are
+  more promiscuous (~4 catalysts per reaction against their ~1). The asymmetry against a
+  K-chemistry — the published claim — is reproduced; the magnitude is not.
 - ⚠ **Food is taken to be the disk.** The paper does not say what plays the role of food
   for a grown chemistry; the disk is the only externally given set. An assumption, flagged
   in the module docstring.

@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rafkit import firing_disk_polymer, max_raf
+from rafkit import binary_polymer, firing_disk_polymer, max_raf
 
 
 class TestGrowth:
@@ -51,17 +51,30 @@ class TestGrowth:
 class TestPaperEnsemble:
     """Figure 3's ensemble: ~2000 species, ~40,000 reactions, ~100 catalysts."""
 
-    def test_reaches_the_published_scale(self):
-        net = firing_disk_polymer(rng=np.random.default_rng(0))       # paper defaults
+    @pytest.mark.parametrize("seed", range(3))
+    def test_reaches_the_published_scale(self, seed):
+        """Across seeds, not just the lucky one -- these are ensemble claims."""
+        net = firing_disk_polymer(rng=np.random.default_rng(seed))    # paper defaults
         assert 1500 <= net.n_molecules <= 2100
         assert 20_000 <= net.n_reactions <= 45_000
         n_cat = len({x for e in net.catalysts for g in e for x in g})
         assert 40 <= n_cat <= 200, n_cat
 
-    def test_raf_is_nearly_the_whole_chemistry(self):
+    @pytest.mark.parametrize("seed", range(3))
+    def test_raf_is_nearly_the_whole_chemistry(self, seed):
         """Their large C-chemistries host 'a RAF often as large as the entire chemistry'."""
-        net = firing_disk_polymer(rng=np.random.default_rng(0))
+        net = firing_disk_polymer(rng=np.random.default_rng(seed))
         assert len(max_raf(net).reactions) > 0.8 * net.n_reactions
+
+    @pytest.mark.parametrize("seed", range(3))
+    def test_far_fewer_catalysts_than_a_k_chemistry_of_the_same_size(self, seed):
+        """Figure 3b's contrast: a C-catalyst drives many more reactions than a K one."""
+        c = firing_disk_polymer(rng=np.random.default_rng(seed))
+        k = binary_polymer(max_len=8, food_len=2, p=0.003, cleavage=True,
+                           rng=np.random.default_rng(seed))
+        per = lambda n: (sum(len(g) for e in n.catalysts for g in e)
+                         / max(len({x for e in n.catalysts for g in e for x in g}), 1))
+        assert per(c) > 5 * per(k)
 
 
 class TestValidation:
