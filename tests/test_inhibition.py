@@ -237,3 +237,62 @@ class TestDownstreamUnderInhibition:
         u = max_urafs(net, inh, reactions=raf)[0]
         census = irrraf_census(net, u, n_samples=5, rng=np.random.default_rng(0))
         assert census["n_distinct"] >= 1
+
+
+# --- generated inhibition: binary_polymer's q / n_inhibitors -----------------------
+
+class TestGeneratedInhibition:
+    """`binary_polymer(q=..., n_inhibitors=...)` -- Hordijk & Steel (2012) Part II."""
+
+    def test_q_zero_leaves_network_uninhibited(self):
+        net = binary_polymer(max_len=5, food_len=2, p=0.01,
+                             rng=np.random.default_rng(0), cleavage=True)
+        assert all(not i for i in net.inhibitors)
+        assert net.n_inhibiting_molecules == 0
+        assert classes_from_inhibitors(net) == ()
+
+    def test_q_does_not_disturb_catalysis(self):
+        """Adding inhibition must not change the chemistry it is added to.
+
+        Every result recorded before inhibition existed was measured at q=0; if the
+        catalysis draw shifted, those numbers would silently stop reproducing.
+        """
+        kw = dict(max_len=5, food_len=2, p=0.01, cleavage=True)
+        a = binary_polymer(rng=np.random.default_rng(3), **kw)
+        b = binary_polymer(rng=np.random.default_rng(3), q=0.05, n_inhibitors=4, **kw)
+        assert a.catalysts == b.catalysts
+        assert a.reactions == b.reactions
+
+    def test_n_inhibitors_caps_k_exactly(self):
+        """`k` is the exponent in max_urafs' 2**k, so the cap must be exact, not a mean."""
+        for cap in (1, 3, 8):
+            net = binary_polymer(max_len=5, food_len=2, p=0.01, q=0.3,
+                                 n_inhibitors=cap, rng=np.random.default_rng(1),
+                                 cleavage=True)
+            assert net.n_inhibiting_molecules <= cap
+            assert len(classes_from_inhibitors(net)) == net.n_inhibiting_molecules
+
+    def test_paired_directions_share_inhibitors(self):
+        """A reversible cleavage-ligation pair is ONE unit, for inhibition as for catalysis."""
+        net = binary_polymer(max_len=5, food_len=2, p=0.01, q=0.1, n_inhibitors=5,
+                             rng=np.random.default_rng(2), cleavage=True,
+                             paired_catalysis=True)
+        half = net.n_reactions // 2
+        assert net.inhibitors[:half] == net.inhibitors[half:]
+
+    def test_inhibition_can_only_shrink_the_raf(self):
+        """u-RAFs are RAFs, so no u-RAF may exceed the uninhibited maximal RAF."""
+        kw = dict(max_len=5, food_len=2, p=0.02, cleavage=True)
+        base = binary_polymer(rng=np.random.default_rng(5), **kw)
+        inh = binary_polymer(rng=np.random.default_rng(5), q=0.02, n_inhibitors=6, **kw)
+        ceiling = len(max_raf(base).reactions)
+        for u in max_urafs(inh):
+            assert len(u) <= ceiling
+
+    def test_q_rejects_non_probability(self):
+        with pytest.raises(ValueError, match="q is a probability"):
+            binary_polymer(max_len=4, q=1.5)
+
+    def test_negative_n_inhibitors_rejected(self):
+        with pytest.raises(ValueError, match="n_inhibitors must be non-negative"):
+            binary_polymer(max_len=4, q=0.1, n_inhibitors=-1)
