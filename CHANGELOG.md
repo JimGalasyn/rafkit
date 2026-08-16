@@ -5,6 +5,20 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — the firing-disk construction
+
+- **`firing_disk_polymer`** — Serra & Villani's firing disk: a chemistry **grown** from a
+  small seed rather than enumerated. A species exists only if some reaction in the network
+  actually **makes** it, so the result is closed under its own production — where an
+  enumerated chemistry is full of species nothing can reach.
+- Reaches their published ensemble on their stated defaults: **~2046 species, ~32,000
+  reactions, ~100 catalysts**, with a RAF covering >95% of the chemistry. (They report
+  ~2000 species, ~40,000 reactions, *"only 100 catalysts"*, and a RAF *"often as large as
+  the entire chemistry"*.)
+- ⚠ **Food is taken to be the disk.** The paper does not say what plays the role of food
+  for a grown chemistry; the disk is the only externally given set. An assumption, flagged
+  in the module docstring.
+
 ### Added — C-BPM, catalysis by structure
 
 - **`complementary_polymer`** — Serra & Villani's C-BPM (*Entropy* 28(2), 184, 2026, §2.2),

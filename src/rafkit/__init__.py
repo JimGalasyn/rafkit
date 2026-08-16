@@ -15,6 +15,7 @@ CatReNet interoperability.
 from rafkit.binary_polymer import BinaryPolymerNetwork, binary_polymer
 from rafkit.complementary_polymer import (complement,
                                           complementary_polymer)
+from rafkit.firing_disk import firing_disk_polymer
 from rafkit.catalysis import catalysing_molecules, is_catalysed, normalise
 from rafkit.crs import parse_crs, read_crs, to_crs, write_crs
 from rafkit.gillespie import Trajectory, propensities, simulate
@@ -33,6 +34,7 @@ __version__ = "0.4.0"
 __all__ = [
     "BinaryPolymerNetwork", "binary_polymer",
     "complementary_polymer",
+    "firing_disk_polymer",
     "complement", "ReactionNetwork",
     "RafResult", "max_raf", "max_raf_strict", "sample_irrraf", "irrraf_census",
     "exploitability", "is_food_catalysed", "catrenet_strictly_autocatalytic",
