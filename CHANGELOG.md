@@ -5,6 +5,47 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — the firing-disk construction
+
+- **`firing_disk_polymer`** — Serra & Villani's firing disk: a chemistry **grown** from a
+  small seed rather than enumerated. A species exists only if some reaction in the network
+  actually **makes** it, so the result is closed under its own production — where an
+  enumerated chemistry is full of species nothing can reach.
+- Reaches their published ensemble on their stated defaults: **~2046 species, ~32,000
+  reactions, ~100 catalysts**, with a RAF covering >95% of the chemistry. (They report
+  ~2000 species, ~40,000 reactions, *"only 100 catalysts"*, and a RAF *"often as large as
+  the entire chemistry"*.)
+- **`examples/serra_villani_2026_c_chemistry.py`** reproduces their Figure 3 ensemble and
+  prints each statistic beside the published value, **including the one that does not
+  match**: reactions per catalyst comes out ~3× their ~400, because these catalysts are
+  more promiscuous (~4 catalysts per reaction against their ~1). The asymmetry against a
+  K-chemistry — the published claim — is reproduced; the magnitude is not.
+- ⚠ **Food is taken to be the disk.** The paper does not say what plays the role of food
+  for a grown chemistry; the disk is the only externally given set. An assumption, flagged
+  in the module docstring.
+
+### Added — C-BPM, catalysis by structure
+
+- **`complementary_polymer`** — Serra & Villani's C-BPM (*Entropy* 28(2), 184, 2026, §2.2),
+  reproduced from their construction rather than invented. A catalyst carries an **active
+  site**, a substring of itself, and acts on whatever is **complementary** to that site:
+  cleaving any polymer containing the complement, or joining a molecule whose suffix
+  complements the site's first part to one whose prefix complements its second.
+- The reaction set is **identical** to the K-model's; only the catalyst→reaction assignment
+  differs. That is the whole point — a K-catalyst's targets are independent draws, a
+  C-catalyst's all share one template.
+- Reproduces the paper's signature: at 510 species, **19 catalysts doing ~200 reactions
+  each**, against the K-model's 510 catalysts doing ~18. (They report ~400 vs ~20.)
+- ⚠ Implements their **total-chemistry** mode. The **firing-disk** mode is a different
+  construction, not a parameter of this one, and is not implemented.
+
+### Fixed
+
+- **`catalysis_level` now counts the reversible pair correctly** when the two directions
+  carry different catalysts. It takes the union across directions; under `paired_catalysis`
+  the halves are identical so every previously reported value is unchanged. Without the fix
+  a C-chemistry's cleavage catalysts were invisible to `f`.
+
 ### Added — generated inhibition
 
 - **`binary_polymer(q=..., n_inhibitors=...)`** — inhibition can now be *generated*, not
