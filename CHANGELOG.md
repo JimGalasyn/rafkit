@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.5.0] — 2026-08-15
 
 ### Added — the firing-disk construction
 
@@ -67,6 +67,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Maintenance
 
 - v0.4.0's version DOI recorded in `CITATION.cff`.
+- `docs/RELEASING.md` now points at the shared `publish-release` skill for the failure
+  modes common to all five repos, and keeps only what is specific to this one — duplicated
+  process drifts.
+- PyPI badge URLs given a `cacheSeconds` parameter to bust GitHub Camo's cached 404 from
+  before the package existed. Camo keys its cache on the URL, so only a URL change repairs
+  it.
 
 ## [0.4.0] — 2026-08-15
 
