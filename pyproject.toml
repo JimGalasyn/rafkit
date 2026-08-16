@@ -1,6 +1,6 @@
 [project]
 name = "rafkit"
-version = "0.4.0"
+version = "0.5.0"
 description = "Autocatalytic (RAF) sets in catalytic reaction networks: maximal RAFs, irreducible cores, and Kauffman binary polymer models."
 readme = "README.md"
 license = { text = "MIT" }

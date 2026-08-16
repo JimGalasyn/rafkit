@@ -4,12 +4,24 @@
   "access_right": "open",
   "license": "MIT",
   "creators": [
-    {"name": "Galasyn, James P."},
-    {"name": "Théodore, Claude"}
+    {
+      "name": "Galasyn, James P."
+    },
+    {
+      "name": "Théodore, Claude"
+    }
   ],
-  "description": "Maximal RAFs, strictly autocatalytic RAFs, irreducible-RAF sampling and census, exploitability, and Kauffman binary polymer models with optional cleavage. Hand-computed known-answer tests throughout, plus regression tests against CatReNet's own output on a committed fixture. Reads and writes the CRS interchange format.",
+  "description": "Maximal RAFs, strictly autocatalytic RAFs, irreducible-RAF sampling and census, exploitability, uninhibited RAFs (u-RAFs), and Gillespie simulation of catalytic reaction networks. Three binary-polymer generators: Kauffman's K-BPM with optional cleavage and generated inhibition; Serra & Villani's C-BPM, where catalysis follows active-site complementarity rather than a coin flip; and their firing-disk construction, which grows a chemistry closed under its own production instead of enumerating one. Hand-computed known-answer tests throughout, regression tests against CatReNet's own output on a committed fixture, and worked examples reproducing published results. Reads and writes the CRS interchange format and exports PNML.",
   "keywords": [
-    "autocatalytic-sets", "RAF", "origin-of-life", "chemical-reaction-networks",
-    "systems-chemistry", "binary-polymer-model", "catalysis", "abiogenesis"
+    "autocatalytic-sets",
+    "RAF",
+    "origin-of-life",
+    "chemical-reaction-networks",
+    "systems-chemistry",
+    "binary-polymer-model",
+    "catalysis",
+    "abiogenesis",
+    "protocells",
+    "template-based-catalysis"
   ]
 }
