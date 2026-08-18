@@ -112,7 +112,7 @@ closed-form conditions, which can be hit or missed to nine significant figures:
 | `r(x)x` linear ⇒ only the symmetric trajectory is stable, **no bistability** | reproduced |
 | `r(x)x = ε + κx²` ⇒ **bistability** at their `Δt`=1, `κ`=8, `ε`=0.5, `φ`=1 | reproduced |
 | bistability **lost above a critical cycle interval** | reproduced |
-| their equation (2), **parameter-free** | reproduced to 2×10⁻⁹ |
+| their equation (2), **parameter-free** | reproduced to 2×10⁻⁹ (asserted at 1e-8) |
 
 The two parameterisations also agree on the *sign*: their equation (3) makes the
 amplification factor crossing 1 the sufficient condition for bistability, and it measures

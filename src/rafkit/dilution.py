@@ -51,6 +51,7 @@ a parameter here. Claims 1, 3 and 4 do not depend on it.
 """
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 
 import numpy as np
@@ -67,42 +68,69 @@ def flux_quadratic(x, eps: float = 0.5, kappa: float = 8.0):
     return eps + kappa * x * x
 
 
+_TINY = 1e-150
+
+
 def _rate(flux, x):
-    """`r(x)` itself, i.e. flux divided by x, with the x -> 0 limit handled."""
+    """`r(x)` itself, i.e. flux divided by x.
+
+    The `x -> 0` limit is taken FROM THE FLUX rather than hardcoded. An earlier version
+    returned `inf` there, which is right for `eps + kappa x^2` with `eps > 0` but wrong
+    whenever the flux vanishes at the origin -- `eps = 0` gives `r(x) = kappa x`, whose
+    limit is 0, not infinity.
+    """
     x = np.asarray(x, dtype=float)
-    out = np.where(x > 1e-300, flux(x) / np.where(x > 1e-300, x, 1.0), np.inf)
-    return out
+    safe = np.where(x > _TINY, x, _TINY)
+    return np.asarray(flux(safe), dtype=float) / safe
+
+
+def _heun_step(x, h, deriv):
+    """One Heun step. Shared so the two protocols cannot drift apart."""
+    d1 = deriv(x)
+    xp = np.maximum(x + h * d1, 0.0)
+    return np.maximum(x + h * 0.5 * (d1 + deriv(xp)), 0.0)
 
 
 @dataclass
 class DilutionResult:
+    """The composition after a run.
+
+    Deliberately carries NO `bistable` field. Bistability is a property of a PAIR of runs
+    from different initial conditions -- a single trajectory cannot know it -- and an
+    earlier version had exactly that field, permanently `False`, which is worse than
+    absent because it reads like an answer. Use `is_bistable`.
+    """
+
     x: np.ndarray
     cycles: int
-    bistable: bool = False
-    reason: str = ""
 
 
 def run_serial_dilution(x0, *, flux=flux_quadratic, dt: float = 1.0, phi: float = 1.0,
                         s_tot: float = 1.0, cycles: int = 400,
-                        steps_per_cycle: int = 4000) -> DilutionResult:
+                        steps_per_cycle: int = 2000) -> DilutionResult:
     """Integrate `cycles` serial-dilution cycles and return the final composition.
 
     Each cycle integrates for `dt` then divides every species by `m = exp(phi*dt)`, which
-    is their SD protocol exactly. `phi -> ` with `dt -> 0` is the CSTR limit, available
-    through `run_cstr`.
+    is their SD protocol exactly. Taking `dt -> 0` at fixed `phi` gives the CSTR limit,
+    available through `run_cstr`.
+
+    `steps_per_cycle` is set from a measured convergence sweep, not guessed: Heun is
+    second order and the composition fraction settles as 7.2e-6 / 1.8e-6 / 4.5e-7 / 1.1e-7
+    at 500 / 1000 / 2000 / 4000 steps. 2000 is two orders tighter than the 1e-3 tolerance a
+    bistability verdict uses, at half the cost of the previous default. Raise it for work
+    that needs the analytic equation to nine figures -- `tests/test_dilution.py` uses
+    20 000 there.
     """
     x = np.array(x0, dtype=float)
     m = float(np.exp(phi * dt))
     h = dt / steps_per_cycle
+
+    def deriv(y):                      # no dilution term: SD dilutes discretely, below
+        return max(s_tot - y.sum(), 0.0) * flux(y)
+
     for _ in range(cycles):
         for _ in range(steps_per_cycle):
-            s = max(s_tot - x.sum(), 0.0)
-            # Heun, so the check is on the model rather than on first-order error.
-            d1 = s * flux(x)
-            xp = np.maximum(x + h * d1, 0.0)
-            sp = max(s_tot - xp.sum(), 0.0)
-            d2 = sp * flux(xp)
-            x = np.maximum(x + h * 0.5 * (d1 + d2), 0.0)
+            x = _heun_step(x, h, deriv)
         x = x / m
     return DilutionResult(x=x, cycles=cycles)
 
@@ -112,26 +140,40 @@ def run_cstr(x0, *, flux=flux_quadratic, phi: float = 1.0, s_tot: float = 1.0,
     """The CSTR limit: the same average dilution applied continuously."""
     x = np.array(x0, dtype=float)
     h = t_end / steps
+
+    def deriv(y):                      # dilution is continuous here, not a discrete cut
+        return max(s_tot - y.sum(), 0.0) * flux(y) - phi * y
+
     for _ in range(steps):
-        s = max(s_tot - x.sum(), 0.0)
-        d1 = s * flux(x) - phi * x
-        xp = np.maximum(x + h * d1, 0.0)
-        sp = max(s_tot - xp.sum(), 0.0)
-        d2 = sp * flux(xp) - phi * xp
-        x = np.maximum(x + h * 0.5 * (d1 + d2), 0.0)
+        x = _heun_step(x, h, deriv)
     return DilutionResult(x=x, cycles=0)
 
 
-def is_bistable(runner, *, asym: float = 0.2, tol: float = 1e-3, **kw) -> bool:
+def is_bistable(runner, *, asym: float = 0.2, tol: float = 1e-3, s_tot: float = 1.0,
+                **kw) -> bool:
     """Does the system remember which species started ahead?
 
     Their criterion: with two symmetric species, a system WITHOUT heredity settles on the
     symmetric trajectory `x1 = x2` from every initial condition, while a bistable one keeps
     whichever started dominant. Run both asymmetries and require the outcomes to differ.
+
+    The two species start summing to `s_tot / 2`, so a caller who changes `s_tot` gets an
+    initial condition that still scales with it. An earlier version hardcoded that total at
+    0.5 while forwarding `s_tot` onward, which silently mismatched the two.
+
+    `**kw` is filtered to the parameters `runner` actually accepts, so the same call works
+    for both protocols -- `run_cstr` takes no `dt`, and forwarding one used to raise
+    `TypeError` on documented usage. Filtering is safe here because these are *protocol*
+    parameters: a cycle interval is meaningless for a CSTR, which has no cycles.
     """
-    tot = 0.5
-    a = runner([tot * (1 + asym), tot * (1 - asym)], **kw).x
-    b = runner([tot * (1 - asym), tot * (1 + asym)], **kw).x
+    accepted = set(inspect.signature(runner).parameters)
+    passed = {k: v for k, v in kw.items() if k in accepted}
+    if "s_tot" in accepted:
+        passed["s_tot"] = s_tot
+
+    half = s_tot / 4.0                      # each species; the pair sums to s_tot / 2
+    a = runner([half * (1 + asym), half * (1 - asym)], **passed).x
+    b = runner([half * (1 - asym), half * (1 + asym)], **passed).x
     if a.sum() <= 0 or b.sum() <= 0:
         return False
     fa = a[0] / a.sum()
