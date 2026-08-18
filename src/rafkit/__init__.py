@@ -5,6 +5,10 @@ maximal RAFs, the self-referential ("strictly autocatalytic") variant, irreducib
 RAF sampling, Kauffman's binary polymer model as a generator, and stochastic simulation
 of a network so that subRAFs can be watched seeding themselves into existence.
 
+One module is deliberately off that theme: `dilution` reproduces a two-species
+autocatalytic ODE with no RAF structure at all, because it is the library's only
+*analytic* calibration target -- see its docstring.
+
 Every algorithm here is written from the published papers and carries hand-computed
 known-answer tests, because a RAF algorithm that is subtly wrong produces plausible
 numbers rather than errors.
@@ -18,6 +22,9 @@ from rafkit.complementary_polymer import (complement,
 from rafkit.firing_disk import firing_disk_polymer
 from rafkit.catalysis import catalysing_molecules, is_catalysed, normalise
 from rafkit.crs import parse_crs, read_crs, to_crs, write_crs
+from rafkit.dilution import (DilutionResult, flux_linear, flux_quadratic,
+                             is_bistable, run_cstr, run_serial_dilution,
+                             symmetric_growth_ratio)
 from rafkit.gillespie import Trajectory, propensities, simulate
 from rafkit.inhibition import (classes_from_inhibitors, is_uninhibited, is_uraf,
                                max_urafs, support)
@@ -41,6 +48,8 @@ __all__ = [
     "core_raf", "has_unique_irraf",
     "is_catalysed", "catalysing_molecules", "normalise",
     "parse_crs", "read_crs", "to_crs", "write_crs",
+    "DilutionResult", "run_serial_dilution", "run_cstr", "is_bistable",
+    "flux_linear", "flux_quadratic", "symmetric_growth_ratio",
     "to_pnml", "write_pnml",
     "simulate", "propensities", "Trajectory",
     "max_urafs", "is_uraf", "is_uninhibited", "support", "classes_from_inhibitors",

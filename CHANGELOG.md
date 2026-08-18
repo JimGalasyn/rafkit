@@ -5,6 +5,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `rafkit.dilution` — serial-dilution and CSTR protocols for competing autocatalytic sets,
+  reproducing the minimal model of Matsubara, Ameta, Thutupalli, Nghe & Krishna
+  (arXiv:2211.03155). **Deliberately off-theme:** it takes no `ReactionNetwork` and has no
+  RAF structure, and the README says so. It is here because it is the library's only
+  *analytic* calibration — every other check is against a reference implementation or a
+  published figure, whereas these are closed-form conditions reproduced to 2e-9. Relevant
+  because RAF work increasingly runs networks inside growing, dividing compartments, where
+  the dilution protocol is a modelling choice that changes the answer.
+
 ### Maintenance
 
 - v0.5.0's version DOI (`10.5281/zenodo.21961131`) recorded in `CITATION.cff`. Written in

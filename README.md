@@ -90,9 +90,39 @@ counted as **one** catalysed reaction, not two. Use `net.catalysis_level` — no
 | `to_pnml` / `write_pnml` | PNML export (ISO/IEC 15909-2) for the Petri net ecosystem |
 | `simulate` | Gillespie direct method — watch subRAFs seed themselves into existence |
 | `max_urafs` | uninhibited RAFs, when a molecule can prevent a reaction |
+| `run_serial_dilution` / `run_cstr` | dilution protocols for growing–dividing compartments — **not a RAF algorithm**, see below |
 
 Every algorithm carries hand-computed known-answer tests, because a RAF algorithm that
 is subtly wrong produces plausible numbers rather than errors.
+
+## One module is deliberately off-theme: `dilution`
+
+Everything above takes a `ReactionNetwork` and asks a RAF question of it. `rafkit.dilution`
+takes no network at all — it is a **two-species ordinary differential equation with no RAF
+structure**, reproducing the minimal model of Matsubara, Ameta, Thutupalli, Nghe & Krishna
+([arXiv:2211.03155](https://arxiv.org/abs/2211.03155)).
+
+It earns its place for one reason: **it is this library's only *analytic* calibration.**
+Every other check here is against a reference implementation (CatReNet) or a published
+figure (Steel, Hordijk & Smith) — matched to a count, or to a shape. Matsubara et al. derive
+closed-form conditions, which can be hit or missed to nine significant figures:
+
+| their claim | status |
+|---|---|
+| `r(x)x` linear ⇒ only the symmetric trajectory is stable, **no bistability** | reproduced |
+| `r(x)x = ε + κx²` ⇒ **bistability** at their `Δt`=1, `κ`=8, `ε`=0.5, `φ`=1 | reproduced |
+| bistability **lost above a critical cycle interval** | reproduced |
+| their equation (2), **parameter-free** | reproduced to 2×10⁻⁹ (asserted at 1e-8) |
+
+The two parameterisations also agree on the *sign*: their equation (3) makes the
+amplification factor crossing 1 the sufficient condition for bistability, and it measures
+0.900 for the linear flux against 1.243 for the quadratic — the numerical test and the
+analytic criterion picking out the same case from independent computations.
+
+The wider use is that RAF work increasingly runs networks inside growing, dividing
+compartments, where the dilution protocol is a modelling choice that changes the answer.
+This gives that choice a validated implementation and a benchmark, independent of any RAF
+structure. If you only want RAF algorithms, ignore this module; nothing else imports it.
 
 ## A reaction network is a Petri net
 
@@ -215,6 +245,9 @@ CatReNet too.
   networks," *Bioinformatics* 40(8), btae515 (2024).
 - Serra & Villani, "Template-Based Catalysis and the Emergence of Collectively
   Autocatalytic Systems," *Entropy* 28(2), 184 (2026).
+- Matsubara, Ameta, Thutupalli, Nghe & Krishna, "Conditions for Darwinian evolution in
+  compartmentalized autocatalytic reaction networks," arXiv:2211.03155 — the analytic
+  benchmark behind `rafkit.dilution`.
 
 ## License
 
