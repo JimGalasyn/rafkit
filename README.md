@@ -91,11 +91,12 @@ counted as **one** catalysed reaction, not two. Use `net.catalysis_level` — no
 | `simulate` | Gillespie direct method — watch subRAFs seed themselves into existence |
 | `max_urafs` | uninhibited RAFs, when a molecule can prevent a reaction |
 | `run_serial_dilution` / `run_cstr` | dilution protocols for growing–dividing compartments — **not a RAF algorithm**, see below |
+| `permeation_flux` / `permeable_by_length` | size-selective transport across a compartment membrane — **not a RAF algorithm**, see below |
 
 Every algorithm carries hand-computed known-answer tests, because a RAF algorithm that
 is subtly wrong produces plausible numbers rather than errors.
 
-## One module is deliberately off-theme: `dilution`
+## Two modules are deliberately off-theme: `dilution` and `permeation`
 
 Everything above takes a `ReactionNetwork` and asks a RAF question of it. `rafkit.dilution`
 takes no network at all — it is a **two-species ordinary differential equation with no RAF
@@ -123,6 +124,39 @@ The wider use is that RAF work increasingly runs networks inside growing, dividi
 compartments, where the dilution protocol is a modelling choice that changes the answer.
 This gives that choice a validated implementation and a benchmark, independent of any RAF
 structure. If you only want RAF algorithms, ignore this module; nothing else imports it.
+
+### `permeation` — one line of transport physics, and a trap worth a module
+
+`rafkit.permeation` is smaller and earns its place differently. RAF work increasingly runs
+networks inside compartments embedded in a shared medium, and every such model needs a rule
+for what crosses the boundary. The rule implemented is Hordijk, Naylor, Krasnogor &
+Fellermann's ([*Life* **8**(3), 33, 2018](https://doi.org/10.3390/life8030033)) — *"molecules
+are allowed to permeate compartment membranes if their lengths do not exceed a certain
+threshold. Permeation is proportional to the concentration difference."*
+
+**"Proportional to the concentration difference" is not "proportional to the count
+difference",** and the two coincide only when compartment and medium have the same volume. In
+a spatial model they generally do not: in the paper above a compartment of radius 0.5 sits in
+a diffusion voxel of 2.5 × 2.5 — and since that world is two-dimensional ("if the world type
+is set to 2D then Y is forced to 1"), the voxel is a slab of unit thickness. **Both are then
+volumes**: a sphere of 0.524 against a slab of 6.25, a ratio of **11.9**. Quoting a voxel
+*area* against a sphere *volume* would be dimensionally meaningless. Writing the flux as
+`P · (n_out − n_in)` silently asserts they are the same size, and produces plausible numbers
+rather than an error — which is the failure mode this whole library is written against.
+
+How much it matters: reproducing that paper's own induction experiment with every printed
+parameter taken from [the authors' published input files](http://ico2s.org/data/extras/compartments/),
+the count-difference form **cannot match both published arms at any permeability** — swept, it
+reaches the control value at an effect ratio of 1.15 on one branch or 2.44 on the other,
+bracketing the published 1.60 without hitting it. The concentration form reproduces both arms
+(16.5 ± 5.9 against their 16.3; 27.8 ± 6.0 against their 26.0) with a single free parameter.
+
+⚠ Note the calibration tier: that is a published *figure* matched with one fitted parameter, so
+it sits with this library's reference-implementation and figure checks — **not** with
+`dilution`, which remains the only analytic anchor here. The module's own tests are
+deterministic properties (equal concentrations give zero flux; equal *counts* do not; flux
+bounded by what is present), because a library gate should be fast and exact; the stochastic
+reproduction lives in the downstream research client.
 
 ## A reaction network is a Petri net
 
