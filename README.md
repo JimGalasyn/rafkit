@@ -137,7 +137,10 @@ threshold. Permeation is proportional to the concentration difference."*
 **"Proportional to the concentration difference" is not "proportional to the count
 difference",** and the two coincide only when compartment and medium have the same volume. In
 a spatial model they generally do not: in the paper above a compartment of radius 0.5 sits in
-a diffusion voxel of 2.5 × 2.5, a volume ratio of **11.9**. Writing the flux as
+a diffusion voxel of 2.5 × 2.5 — and since that world is two-dimensional ("if the world type
+is set to 2D then Y is forced to 1"), the voxel is a slab of unit thickness. **Both are then
+volumes**: a sphere of 0.524 against a slab of 6.25, a ratio of **11.9**. Quoting a voxel
+*area* against a sphere *volume* would be dimensionally meaningless. Writing the flux as
 `P · (n_out − n_in)` silently asserts they are the same size, and produces plausible numbers
 rather than an error — which is the failure mode this whole library is written against.
 

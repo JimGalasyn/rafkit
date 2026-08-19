@@ -53,6 +53,7 @@ __all__ = [
     "parse_crs", "read_crs", "to_crs", "write_crs",
     "DilutionResult", "run_serial_dilution", "run_cstr", "is_bistable",
     "flux_linear", "flux_quadratic", "symmetric_growth_ratio",
+    "permeation_flux", "permeable_by_length",
     "to_pnml", "write_pnml",
     "simulate", "propensities", "Trajectory",
     "max_urafs", "is_uraf", "is_uninhibited", "support", "classes_from_inhibitors",

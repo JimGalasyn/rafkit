@@ -7,6 +7,19 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `rafkit.permeation` — size-selective transport across a compartment membrane, following
+  Hordijk, Naylor, Krasnogor & Fellermann (*Life* 8(3), 33, 2018). **Deliberately off-theme**
+  like `dilution`: it takes no `ReactionNetwork`. It is here because "permeation is
+  proportional to the **concentration** difference" is not "proportional to the **count**
+  difference" — the two coincide only when compartment and medium have equal volume, and in a
+  spatial model they generally do not (radius-0.5 sphere in a 2.5x2.5x1 voxel is a ratio of
+  11.9). Writing the flux as `P*(n_out - n_in)` produces plausible numbers rather than an
+  error. Reproducing that paper's induction experiment from the authors' published input
+  files, the count form cannot match both published arms at any permeability, reaching the
+  control value at an effect ratio of 1.15 or 2.44 and bracketing the published 1.60; the
+  concentration form reproduces both. Calibration tier is a published *figure* with one
+  fitted parameter — not a second analytic anchor.
+
 - `rafkit.dilution` — serial-dilution and CSTR protocols for competing autocatalytic sets,
   reproducing the minimal model of Matsubara, Ameta, Thutupalli, Nghe & Krishna
   (arXiv:2211.03155). **Deliberately off-theme:** it takes no `ReactionNetwork` and has no

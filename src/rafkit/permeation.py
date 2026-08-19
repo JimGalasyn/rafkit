@@ -17,7 +17,10 @@ certain threshold. Permeation is proportional to the concentration difference."*
 **The trap this module exists for.** "Proportional to the concentration difference" is not
 "proportional to the count difference", and the two coincide only when compartment and medium
 have the same volume. In a spatial model they generally do not: in the paper above a compartment
-of radius 0.5 sits in a diffusion voxel of 2.5 × 2.5, a volume ratio of **11.9**. Writing the
+of radius 0.5 (a sphere, volume 0.524) sits in a diffusion voxel of 2.5 × 2.5 — and since that
+world is two-dimensional, with "if the world type is set to 2D then Y is forced to 1", the voxel
+is a slab of unit thickness and volume 6.25. **Both are volumes**, and the ratio is **11.9**.
+Quote a voxel *area* against a sphere *volume* and the number is dimensionally meaningless. Writing the
 flux as `P · (n_out − n_in)` silently asserts the two are the same size.
 
 That is not a cosmetic difference. Reproducing the paper's own induction experiment with every
@@ -41,11 +44,17 @@ __all__ = ["permeable_by_length", "permeation_flux"]
 def permeable_by_length(lengths, max_len: int, blocked=()) -> np.ndarray:
     """Boolean mask of species small enough to cross a membrane of aperture `max_len`.
 
-    `blocked` names species that are held back regardless of size, which is how a treatment
-    arm isolates one molecule's transport — the manipulation the induction experiment turns on.
+    `lengths` is a sequence of species — strings, whose length is taken, or integers already
+    giving a length. `blocked` is a sequence of **positional indices** into that sequence,
+    naming species held back regardless of size; that is how a treatment arm isolates one
+    molecule's transport, the manipulation the induction experiment turns on.
     """
+    if isinstance(lengths, str):
+        # "011" would otherwise iterate to ('0', '1', '1') and return a per-CHARACTER mask,
+        # which is a wrong answer rather than an error.
+        raise TypeError("lengths must be a sequence of species, not a single string; "
+                        "pass ['011'] rather than '011'")
     mask = np.asarray([len(s) if isinstance(s, str) else s for s in lengths]) <= max_len
-    mask = np.asarray(mask, dtype=bool).copy()
     for i in blocked:
         mask[i] = False
     return mask
@@ -69,8 +78,14 @@ def permeation_flux(n_in, n_out, *, permeability: float, area: float,
     """
     if volume_in <= 0 or volume_out <= 0:
         raise ValueError(f"volumes must be positive, got in={volume_in}, out={volume_out}")
-    n_in = np.asarray(n_in, dtype=float)
-    n_out = np.asarray(n_out, dtype=float)
+    if permeability < 0 or area < 0:
+        # A negative coefficient silently reverses the flux, which is uphill transport --
+        # exactly the plausible-numbers-rather-than-errors failure this module is about.
+        raise ValueError(f"permeability and area must be non-negative, "
+                         f"got permeability={permeability}, area={area}")
+    # atleast_1d: a scalar input would otherwise yield a 0-d array, so `result[0]` raises
+    n_in = np.atleast_1d(np.asarray(n_in, dtype=float))
+    n_out = np.atleast_1d(np.asarray(n_out, dtype=float))
     flux = permeability * area * dt * (n_out / volume_out - n_in / volume_in)
     if permeable is not None:
         flux = flux * np.asarray(permeable, dtype=float)
