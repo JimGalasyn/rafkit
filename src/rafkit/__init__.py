@@ -5,9 +5,11 @@ maximal RAFs, the self-referential ("strictly autocatalytic") variant, irreducib
 RAF sampling, Kauffman's binary polymer model as a generator, and stochastic simulation
 of a network so that subRAFs can be watched seeding themselves into existence.
 
-One module is deliberately off that theme: `dilution` reproduces a two-species
+Two modules are deliberately off that theme. `dilution` reproduces a two-species
 autocatalytic ODE with no RAF structure at all, because it is the library's only
-*analytic* calibration target -- see its docstring.
+*analytic* calibration target. `permeation` is one line of membrane transport physics,
+there because it is a modelling choice that changes the answer and is easy to get
+wrong in a way that produces plausible numbers -- see their docstrings.
 
 Every algorithm here is written from the published papers and carries hand-computed
 known-answer tests, because a RAF algorithm that is subtly wrong produces plausible
@@ -29,6 +31,7 @@ from rafkit.gillespie import Trajectory, propensities, simulate
 from rafkit.inhibition import (classes_from_inhibitors, is_uninhibited, is_uraf,
                                max_urafs, support)
 from rafkit.network import ReactionNetwork
+from rafkit.permeation import permeable_by_length, permeation_flux
 from rafkit.pnml import to_pnml, write_pnml
 from rafkit.raf import (
     RafResult, catrenet_strictly_autocatalytic, core_raf, exploitability,
