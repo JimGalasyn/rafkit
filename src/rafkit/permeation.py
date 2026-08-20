@@ -72,9 +72,18 @@ def permeation_flux(n_in, n_out, *, permeability: float, area: float,
     required rather than optional** — passing counts as if they were concentrations is the error
     this module documents, and there is no default that would let it happen silently.
 
-    `permeability`, `area` and the two volumes may each be a scalar or an array broadcastable
-    against `n_in`, so a whole population of compartments of differing size can be stepped at
-    once -- the case a spatial model needs, where every pore holds a cell with its own radius.
+    **Geometry is per-COMPARTMENT.** `permeability`, `area` and the two volumes may each be a
+    scalar or an array broadcastable against `n_in.shape[:-1]` -- the compartment axes, with the
+    last axis of `n_in` always being species. A whole population of compartments of differing
+    size therefore steps at once, which is the case a spatial model needs, where every pore holds
+    a cell with its own radius.
+
+    A per-SPECIES vector is refused rather than broadcast, because there is no way to tell one
+    from a per-compartment vector when the two counts coincide, and guessing produced a silent
+    wrong answer: keying the reshape off `volume_in` alone meant a batched `area` with a scalar
+    `volume_in` broadcast along the species axis, giving [1.6, 1.6, 1.6, 1.6] where the right
+    answer was [1.6, 3.2, 4.8, 6.4]. Per-species variation belongs in `permeable`, which
+    multiplies the flux and so carries graded factors, not only a 0/1 mask.
 
     The result is clipped so an explicit step cannot move more than is present at either end.
     The compartment side binds first whenever it is the smaller volume, since its exchange rate
@@ -94,14 +103,32 @@ def permeation_flux(n_in, n_out, *, permeability: float, area: float,
     # atleast_1d: a scalar input would otherwise yield a 0-d array, so `result[0]` raises
     n_in = np.atleast_1d(np.asarray(n_in, dtype=float))
     n_out = np.atleast_1d(np.asarray(n_out, dtype=float))
-    # Geometry may be scalar (one compartment) or an array broadcastable against `n_in` --
-    # a population of compartments differing in size, which is the many-pore case. Trailing
-    # axes are added so a per-compartment column broadcasts across the species axis.
-    while volume_in.ndim and volume_in.ndim < n_in.ndim:
-        volume_in = volume_in[..., None]
-        volume_out = np.asarray(volume_out)[..., None] if np.ndim(volume_out) else volume_out
-        area = np.asarray(area)[..., None] if np.ndim(area) else area
-        permeability = np.asarray(permeability)[..., None] if np.ndim(permeability) else permeability
+    batch = n_in.shape[:-1]          # compartment axes; the last axis is always species
+
+    def _per_compartment(x, name):
+        """Scalar, or broadcastable against the COMPARTMENT axes, then given a species axis.
+
+        Checking every operand against one stated contract -- rather than reshaping them all
+        to follow whichever one happened to be an array -- is what makes a per-species vector
+        an error instead of a silently mis-broadcast answer.
+        """
+        if x.ndim == 0:
+            return x
+        try:
+            x = np.broadcast_to(x, batch)
+        except ValueError:
+            raise ValueError(
+                f"{name} has shape {x.shape}, which is not scalar and does not broadcast "
+                f"against the compartment axes {batch} of n_in {n_in.shape}. Geometry is "
+                f"per-compartment; for per-species variation use `permeable`, which "
+                f"multiplies the flux and accepts graded factors."
+            ) from None
+        return x[..., None]
+
+    permeability = _per_compartment(permeability, "permeability")
+    area = _per_compartment(area, "area")
+    volume_in = _per_compartment(volume_in, "volume_in")
+    volume_out = _per_compartment(volume_out, "volume_out")
     flux = permeability * area * dt * (n_out / volume_out - n_in / volume_in)
     if permeable is not None:
         flux = flux * np.asarray(permeable, dtype=float)
