@@ -184,3 +184,98 @@ class TestSizeSelectivity:
         b = permeable_by_length(species, max_len=2, blocked=(2,))
         assert list(a) == [True, True, True]
         assert list(b) == [True, True, False]
+
+
+class TestBatchedGeometry:
+    """A population of compartments, each with its own size, stepped at once.
+
+    The case a spatial model needs: every pore holds a cell, and the cells differ in radius.
+    Looping `permeation_flux` per compartment works but puts a Python call in the inner loop
+    of an integrator; broadcasting the geometry keeps ONE implementation of the law instead
+    of a fast inline copy that could drift from it.
+
+    ⚠ These tests are parameterised over WHICH operand carries the batch. The first version
+    put the batch on `volume_in` every time -- and the implementation happened to key its
+    reshape off `volume_in`, so the suite exercised the one shape that worked and shipped a
+    silent wrong answer for the others. A batched `area` with a scalar `volume_in` broadcast
+    along the SPECIES axis, returning [1.6, 1.6, 1.6, 1.6] where [1.6, 3.2, 4.8, 6.4] was
+    correct. Testing only the path the code takes is not testing the contract.
+    """
+
+    BASE = dict(permeability=1.0, area=A_COMP, volume_in=V_COMP, volume_out=V_VOX)
+
+    @pytest.mark.parametrize("operand", ["permeability", "area", "volume_in", "volume_out"])
+    def test_every_geometry_operand_can_carry_the_batch(self, operand):
+        """Uniform values in a batched operand must reproduce the scalar answer exactly,
+        whichever operand is batched."""
+        n_in, n_out = np.array([3.0, 40.0]), np.array([80.0, 5.0])
+        one = permeation_flux(n_in, n_out, **self.BASE)
+        kw = dict(self.BASE)
+        kw[operand] = np.full(4, self.BASE[operand])
+        many = permeation_flux(np.tile(n_in, (4, 1)), np.tile(n_out, (4, 1)), **kw)
+        assert many.shape == (4, 2)
+        for row in many:
+            assert row == pytest.approx(one)
+
+    @pytest.mark.parametrize("operand", ["permeability", "area"])
+    def test_a_batched_multiplier_scales_each_compartment(self, operand):
+        """The test that catches the species-axis bug: with n_species == n_compartments the
+        wrong broadcast is silent, so the values must be checked, not just the shape."""
+        n_in = np.zeros((4, 4))
+        n_out = np.full((4, 4), 10.0)
+        kw = dict(permeability=1.0, area=1.0, volume_in=1.0, volume_out=6.25)
+        kw[operand] = np.array([1.0, 2.0, 3.0, 4.0])
+        f = permeation_flux(n_in, n_out, **kw)
+        expected = np.array([1.0, 2.0, 3.0, 4.0]) * (10.0 / 6.25)
+        assert f[:, 0] == pytest.approx(expected)
+        assert (f[:, 0] == f[0, 0]).sum() == 1, "flux must vary by compartment, not be uniform"
+
+    def test_batched_volume_out_scales_each_compartment(self):
+        f = permeation_flux(np.zeros((2, 3)), np.full((2, 3), 10.0), permeability=1.0,
+                            area=1.0, volume_in=1.0, volume_out=np.array([6.25, 12.5]))
+        assert f[0, 0] == pytest.approx(2 * f[1, 0])
+
+    def test_compartments_of_different_size_get_different_flux(self):
+        """If the per-compartment volumes were not really being used, the rows would agree."""
+        n_in = np.tile(np.array([5.0, 5.0]), (3, 1))
+        n_out = np.tile(np.array([90.0, 90.0]), (3, 1))
+        vin = np.array([V_COMP, 2 * V_COMP, 4 * V_COMP])
+        f = permeation_flux(n_in, n_out, permeability=1.0, area=A_COMP,
+                            volume_in=vin, volume_out=V_VOX)
+        assert f[0, 0] != pytest.approx(f[1, 0])
+        # a denser (smaller) compartment has a smaller inward concentration gradient
+        assert f[0, 0] < f[1, 0] < f[2, 0]
+
+    def test_batched_still_clips_per_compartment(self):
+        n_in = np.array([[2.0], [100.0]])
+        n_out = np.array([[0.0], [0.0]])
+        f = permeation_flux(n_in, n_out, permeability=1e6, area=A_COMP,
+                            volume_in=np.array([V_COMP, V_COMP]), volume_out=V_VOX)
+        assert (n_in + f >= 0).all()
+        assert f[0, 0] == pytest.approx(-2.0)
+        assert f[1, 0] == pytest.approx(-100.0)
+
+    def test_batched_volumes_are_still_validated(self):
+        with pytest.raises(ValueError, match="volumes must be positive"):
+            permeation_flux(np.zeros((2, 1)), np.zeros((2, 1)), permeability=1.0, area=1.0,
+                            volume_in=np.array([1.0, 0.0]), volume_out=1.0)
+
+    @pytest.mark.parametrize("operand", ["permeability", "area", "volume_in", "volume_out"])
+    def test_a_per_species_vector_is_refused_not_broadcast(self, operand):
+        """Geometry is per-COMPARTMENT. A per-species vector cannot be distinguished from a
+        per-compartment one when the counts coincide, so guessing is what produced the silent
+        wrong answer. It must raise, and say where per-species variation belongs."""
+        kw = dict(permeability=1.0, area=1.0, volume_in=1.0, volume_out=6.25)
+        kw[operand] = np.array([1.0, 2.0, 3.0])          # 3 species, 4 compartments
+        with pytest.raises(ValueError, match="per-compartment"):
+            permeation_flux(np.zeros((4, 3)), np.ones((4, 3)), **kw)
+
+    def test_per_species_variation_goes_through_permeable(self):
+        """The escape hatch the error message points at: `permeable` multiplies the flux, so
+        it carries graded per-species factors and not only a 0/1 mask."""
+        n_in, n_out = np.zeros((2, 3)), np.full((2, 3), 10.0)
+        full = permeation_flux(n_in, n_out, permeability=1.0, area=1.0,
+                               volume_in=1.0, volume_out=6.25)
+        graded = permeation_flux(n_in, n_out, permeability=1.0, area=1.0, volume_in=1.0,
+                                 volume_out=6.25, permeable=np.array([1.0, 0.5, 0.0]))
+        assert graded[0] == pytest.approx(full[0] * np.array([1.0, 0.5, 0.0]))
