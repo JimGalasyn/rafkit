@@ -184,3 +184,48 @@ class TestSizeSelectivity:
         b = permeable_by_length(species, max_len=2, blocked=(2,))
         assert list(a) == [True, True, True]
         assert list(b) == [True, True, False]
+
+
+class TestBatchedGeometry:
+    """A population of compartments, each with its own size, stepped at once.
+
+    The case a spatial model needs: every pore holds a cell, and the cells differ in radius.
+    Looping `permeation_flux` per compartment works but puts a Python call in the inner loop
+    of an integrator; broadcasting the geometry keeps ONE implementation of the law instead
+    of a fast inline copy that could drift from it.
+    """
+
+    def test_batched_matches_scalar_exactly(self):
+        n_in, n_out = np.array([3.0, 40.0]), np.array([80.0, 5.0])
+        one = permeation_flux(n_in, n_out, **GEOM)
+        many = permeation_flux(np.tile(n_in, (4, 1)), np.tile(n_out, (4, 1)),
+                               permeability=1.0, area=np.full(4, A_COMP),
+                               volume_in=np.full(4, V_COMP), volume_out=np.full(4, V_VOX))
+        assert many.shape == (4, 2)
+        for row in many:
+            assert row == pytest.approx(one)
+
+    def test_compartments_of_different_size_get_different_flux(self):
+        """If the per-compartment volumes were not really being used, the rows would agree."""
+        n_in = np.tile(np.array([5.0, 5.0]), (3, 1))
+        n_out = np.tile(np.array([90.0, 90.0]), (3, 1))
+        vin = np.array([V_COMP, 2 * V_COMP, 4 * V_COMP])
+        f = permeation_flux(n_in, n_out, permeability=1.0, area=A_COMP,
+                            volume_in=vin, volume_out=V_VOX)
+        assert f[0, 0] != pytest.approx(f[1, 0])
+        # a denser (smaller) compartment has a smaller inward concentration gradient
+        assert f[0, 0] < f[1, 0] < f[2, 0]
+
+    def test_batched_still_clips_per_compartment(self):
+        n_in = np.array([[2.0], [100.0]])
+        n_out = np.array([[0.0], [0.0]])
+        f = permeation_flux(n_in, n_out, permeability=1e6, area=A_COMP,
+                            volume_in=np.array([V_COMP, V_COMP]), volume_out=V_VOX)
+        assert (n_in + f >= 0).all()
+        assert f[0, 0] == pytest.approx(-2.0)
+        assert f[1, 0] == pytest.approx(-100.0)
+
+    def test_batched_volumes_are_still_validated(self):
+        with pytest.raises(ValueError, match="volumes must be positive"):
+            permeation_flux(np.zeros((2, 1)), np.zeros((2, 1)), permeability=1.0, area=1.0,
+                            volume_in=np.array([1.0, 0.0]), volume_out=1.0)

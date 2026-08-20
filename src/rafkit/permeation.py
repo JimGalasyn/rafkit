@@ -72,13 +72,21 @@ def permeation_flux(n_in, n_out, *, permeability: float, area: float,
     required rather than optional** — passing counts as if they were concentrations is the error
     this module documents, and there is no default that would let it happen silently.
 
+    `permeability`, `area` and the two volumes may each be a scalar or an array broadcastable
+    against `n_in`, so a whole population of compartments of differing size can be stepped at
+    once -- the case a spatial model needs, where every pore holds a cell with its own radius.
+
     The result is clipped so an explicit step cannot move more than is present at either end.
     The compartment side binds first whenever it is the smaller volume, since its exchange rate
     `permeability * area / volume_in` is correspondingly higher.
     """
-    if volume_in <= 0 or volume_out <= 0:
+    volume_in = np.asarray(volume_in, dtype=float)
+    volume_out = np.asarray(volume_out, dtype=float)
+    permeability = np.asarray(permeability, dtype=float)
+    area = np.asarray(area, dtype=float)
+    if np.any(volume_in <= 0) or np.any(volume_out <= 0):
         raise ValueError(f"volumes must be positive, got in={volume_in}, out={volume_out}")
-    if permeability < 0 or area < 0:
+    if np.any(permeability < 0) or np.any(area < 0):
         # A negative coefficient silently reverses the flux, which is uphill transport --
         # exactly the plausible-numbers-rather-than-errors failure this module is about.
         raise ValueError(f"permeability and area must be non-negative, "
@@ -86,6 +94,14 @@ def permeation_flux(n_in, n_out, *, permeability: float, area: float,
     # atleast_1d: a scalar input would otherwise yield a 0-d array, so `result[0]` raises
     n_in = np.atleast_1d(np.asarray(n_in, dtype=float))
     n_out = np.atleast_1d(np.asarray(n_out, dtype=float))
+    # Geometry may be scalar (one compartment) or an array broadcastable against `n_in` --
+    # a population of compartments differing in size, which is the many-pore case. Trailing
+    # axes are added so a per-compartment column broadcasts across the species axis.
+    while volume_in.ndim and volume_in.ndim < n_in.ndim:
+        volume_in = volume_in[..., None]
+        volume_out = np.asarray(volume_out)[..., None] if np.ndim(volume_out) else volume_out
+        area = np.asarray(area)[..., None] if np.ndim(area) else area
+        permeability = np.asarray(permeability)[..., None] if np.ndim(permeability) else permeability
     flux = permeability * area * dt * (n_out / volume_out - n_in / volume_in)
     if permeable is not None:
         flux = flux * np.asarray(permeable, dtype=float)
