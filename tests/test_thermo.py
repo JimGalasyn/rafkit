@@ -23,7 +23,8 @@ from rafkit.thermo import (RT_KJ_PER_MOL_298K, BondEnergies, Rates,
                            barrier_drop_from_enhancement, catalysed_rates,
                            detailed_balance_residual, elongation_ratio,
                            enhancement_from_barrier_drop, equilibrium_constant,
-                           mean_length, rate_constants, reaction_free_energies,
+                           kinetics_from_energies, mean_length, rate_constants,
+                           reaction_free_energies,
                            reaction_rate_constants, reversible_pairs,
                            sequence_correlation_length, transfer_matrix)
 
@@ -423,10 +424,19 @@ class TestFlory:
             mean_length(UNIFORM, monomer=2.0, dg_assoc=0.0)
 
     def test_dg_assoc_is_what_decides_whether_polymers_form_at_all(self):
-        """It is the only sequence- and length-independent term, and the default of 0.0 is a
-        choice — 'joining is free at the standard state' — not a neutral absence."""
+        """It is the only sequence- and length-independent term, and `0.0` is a choice —
+        'joining is free at the standard state' — not a neutral absence.
+
+        Which is why it is now a REQUIRED argument (see `TestAssociationCostIsRequired`): the
+        value it used to default to is the one that breaks the model. `0.0` puts the
+        elongation ratio above 1 here — runaway polymerisation, no equilibrium at all — and a
+        realistic association cost brings it back below. `4.7` is Ross & Deamer's +3.3 kcal/mol
+        at 85 C in units of RT, so the recovery happens at a measured value and not merely at
+        some larger number.
+        """
         assert elongation_ratio(UNIFORM, monomer=0.5, dg_assoc=0.0) > 1.0
         assert elongation_ratio(UNIFORM, monomer=0.5, dg_assoc=3.0) < 1.0
+        assert elongation_ratio(UNIFORM, monomer=0.5, dg_assoc=4.7) < 1.0
 
 
 class TestSignConvention:
@@ -705,35 +715,51 @@ class TestAssociationCostIsRequired:
     NET = binary_polymer(max_len=4, food_len=1, p=0.01, cleavage=True,
                          rng=np.random.default_rng(0))
 
-    @pytest.mark.parametrize("call", [
-        lambda: reaction_free_energies(NONADDITIVE.__class__(NONADDITIVE.e), NONADDITIVE),
-        lambda: transfer_matrix(UNIFORM),
-        lambda: elongation_ratio(UNIFORM, monomer=0.1),
-        lambda: mean_length(UNIFORM, monomer=0.1),
-    ])
-    def test_omitting_it_is_a_TypeError_not_a_silent_zero(self, call):
+    # Every function the requirement covers, each called WITHOUT `dg_assoc`. Listed by name so
+    # the coverage claim is checkable against `REQUIRED` below rather than eyeballed -- an
+    # earlier version of this class omitted `kinetics_from_energies` from both of its tests, so
+    # a reintroduced default there would have shipped: every other test passes `dg_assoc=`
+    # explicitly and would not have noticed.
+    CALLS = {
+        "reaction_free_energies":
+            lambda net: reaction_free_energies(net, NONADDITIVE),
+        "reaction_rate_constants":
+            lambda net: reaction_rate_constants(net, NONADDITIVE, barrier=6.0),
+        "detailed_balance_residual":
+            lambda net: detailed_balance_residual(net, np.ones(net.n_reactions), NONADDITIVE),
+        "kinetics_from_energies":
+            lambda net: kinetics_from_energies(net, NONADDITIVE, barrier=6.0, enhancement=2.0),
+        "transfer_matrix":
+            lambda net: transfer_matrix(UNIFORM),
+        "elongation_ratio":
+            lambda net: elongation_ratio(UNIFORM, monomer=0.1),
+        "mean_length":
+            lambda net: mean_length(UNIFORM, monomer=0.1),
+    }
+
+    @pytest.mark.parametrize("name", sorted(CALLS))
+    def test_omitting_it_is_a_TypeError_not_a_silent_zero(self, name):
         with pytest.raises(TypeError, match="dg_assoc"):
-            call()
+            self.CALLS[name](self.NET)
 
-    def test_the_network_entry_points_require_it_too(self):
-        for call in (
-            lambda: reaction_free_energies(self.NET, NONADDITIVE),
-            lambda: reaction_rate_constants(self.NET, NONADDITIVE, barrier=6.0),
-            lambda: detailed_balance_residual(self.NET, np.ones(self.NET.n_reactions),
-                                              NONADDITIVE),
-        ):
-            with pytest.raises(TypeError, match="dg_assoc"):
-                call()
+    def test_the_guard_covers_every_function_that_declares_it_required(self):
+        """The list above is checked against the signatures, not maintained by hand.
 
-    def test_the_value_it_used_to_default_to_is_the_one_that_breaks_equilibrium(self):
-        """Not a hypothetical risk: 0.0 is exactly the setting most likely to run away.
-
-        At a monomer concentration of 0.5 with a uniform bond energy of -1, the old default
-        puts the elongation ratio above 1 — no equilibrium exists — while any realistic
-        association cost brings it back below.
+        A `TypeError` naming `dg_assoc` is good evidence but not proof of *which* stage
+        failed, and a hand-kept list silently rots. This asserts the two agree: every module
+        function whose `dg_assoc` has no default appears in `CALLS`, and nothing else does.
         """
-        assert elongation_ratio(UNIFORM, monomer=0.5, dg_assoc=0.0) > 1.0
-        assert elongation_ratio(UNIFORM, monomer=0.5, dg_assoc=4.7) < 1.0    # ~ +3.3 kcal/mol
+        import inspect
+
+        import rafkit.thermo as th
+        required = {n for n, f in vars(th).items()
+                    if inspect.isfunction(f) and not n.startswith("_")
+                    and (p := inspect.signature(f).parameters.get("dg_assoc")) is not None
+                    and p.default is inspect.Parameter.empty}
+        assert required == set(self.CALLS)
+        # and the exemption is still exempt, for the reason the class docstring gives
+        assert inspect.signature(
+            th.sequence_correlation_length).parameters["dg_assoc"].default == 0.0
 
     def test_the_one_function_that_KEEPS_its_default_is_the_one_where_it_cancels(self):
         """`sequence_correlation_length` is exempt because the argument provably does nothing.
