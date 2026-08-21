@@ -367,7 +367,7 @@ def barrier_drop_from_enhancement(enhancement, *, rt: float = 1.0):
 # so a BinaryPolymerNetwork works and nothing is required to inherit anything.
 # ---------------------------------------------------------------------------------------
 
-def reaction_free_energies(net, energies: BondEnergies, *, dg_assoc: float = 0.0):
+def reaction_free_energies(net, energies: BondEnergies, *, dg_assoc: float):
     """Standard free energy of every reaction, **in its stored direction**.
 
     `net.reactions[r]` is always `(a, b, ab)` whichever way the reaction runs, so the
@@ -375,10 +375,21 @@ def reaction_free_energies(net, energies: BondEnergies, *, dg_assoc: float = 0.0
 
     `dg_assoc` is the sequence- and length-independent cost of turning two molecules into one
     at the standard state. ⚠ It is the **only** place the standard state enters, and it does
-    not cancel the way a per-monomer term does, because a ligation reduces particle count.
-    The default `0.0` is a *choice* — "the standard state is such that joining is free" — not
-    a neutral absence, and it is what decides whether polymerisation happens at all at unit
-    concentration. See `elongation_ratio`.
+    not cancel the way a per-monomer chemical potential does, because a ligation reduces
+    *particle* count by one.
+
+    ⚠ **Required, with no default, deliberately** — the same reason `permeation_flux` requires
+    both volumes. `0.0` is not a neutral absence but the claim *"joining is free at the
+    standard state"*, and it is the one value that makes polymerisation cost nothing. For
+    scale, Ross & Deamer (*Life* 6(3):28) put phosphodiester formation at **+3.3 kcal/mol at
+    85 °C — about +4.7 RT, K₁ ≈ 1e-3** — so `0.0` does not resemble a real association cost.
+    It also decides whether an equilibrium exists at all; see `elongation_ratio`.
+
+    ⚠ And it is where **water activity** would enter, since a ligation releases water:
+    mass action for `N_m + N_n ⇌ N_{m+n} + H₂O` puts `+RT·ln(a_W)` in exactly this term,
+    negative when dry. So `dg_assoc = 0.0` silently asserts `a_W = 1`, i.e. permanently wet.
+    **Not implemented here** — that is the *form*, not a number, and no `a_W` values are
+    supplied by the source.
     """
     mols = net.molecules
     out = np.empty(len(net.reactions), dtype=float)
@@ -434,7 +445,7 @@ def _paired(value, name: str, n_reactions: int, pairs) -> np.ndarray:
 
 def reaction_rate_constants(net, energies: BondEnergies, *, barrier,
                             prefactor: float = 1.0, beta: float = 0.5, rt: float = 1.0,
-                            dg_assoc: float = 0.0, enhancement=1.0, pairs=None):
+                            dg_assoc: float, enhancement=1.0, pairs=None):
     """Rate constant of every reaction in its stored direction — ready for `propensities`.
 
     A ligation entry gets the forward branch of the Brønsted split and its cleavage partner
@@ -477,7 +488,7 @@ def reaction_rate_constants(net, energies: BondEnergies, *, barrier,
     return catalysed_rates(Rates(forward=k, reverse=k), enhancement).forward
 
 
-def detailed_balance_residual(net, k, energies: BondEnergies, *, dg_assoc: float = 0.0,
+def detailed_balance_residual(net, k, energies: BondEnergies, *, dg_assoc: float,
                               rt: float = 1.0) -> float:
     """Largest `|ln(k_f/k_r) + ΔG/RT|` over the network's reversible pairs. Zero is lawful.
 
@@ -658,7 +669,7 @@ class Kinetics:
 
 def kinetics_from_energies(net, energies: BondEnergies, *, barrier, enhancement,
                            prefactor: float = 1.0, beta: float = 0.5, rt: float = 1.0,
-                           dg_assoc: float = 0.0) -> Kinetics:
+                           dg_assoc: float) -> Kinetics:
     """Build the `Kinetics` a network's bond energies imply.
 
     `k_uncat` comes from `reaction_rate_constants`, so every reversible pair satisfies
@@ -699,8 +710,8 @@ def kinetics_from_energies(net, energies: BondEnergies, *, barrier, enhancement,
 # below are closed form rather than simulated.
 # ---------------------------------------------------------------------------------------
 
-def transfer_matrix(energies: BondEnergies, *, rt: float = 1.0, monomer=1.0,
-                    dg_assoc: float = 0.0) -> np.ndarray:
+def transfer_matrix(energies: BondEnergies, *, dg_assoc: float, rt: float = 1.0,
+                    monomer=1.0) -> np.ndarray:
     """`T[i, j] = m_j · exp(−(e[i,j] + dg_assoc)/RT)`, the weight of extending by one residue.
 
     With this normalisation the equilibrium weight of a sequence `s` is
@@ -762,7 +773,7 @@ def _perron_and_subdominant(t: np.ndarray) -> tuple[float, float]:
     return float(lead.real), float(np.max(np.abs(rest))) if rest.size else 0.0
 
 
-def elongation_ratio(energies: BondEnergies, *, monomer=1.0, dg_assoc: float = 0.0,
+def elongation_ratio(energies: BondEnergies, *, dg_assoc: float, monomer=1.0,
                      rt: float = 1.0) -> float:
     """`ρ`, the equilibrium factor per added monomer — the leading transfer eigenvalue.
 
@@ -773,15 +784,17 @@ def elongation_ratio(energies: BondEnergies, *, monomer=1.0, dg_assoc: float = 0
       chemistry allows, and any answer computed from such a run is a statement about
       `max_len` rather than about the chemistry.
 
-    So this is the guard on a parameter choice. `dg_assoc` and the monomer supply enter here
-    and nowhere else in the ensemble: both scale `T` uniformly, so they move `ρ` but leave
-    `sequence_correlation_length` alone.
+    So this is the guard on a parameter choice, which is why `dg_assoc` is required here:
+    the value that used to be its default, `0.0`, is exactly the setting most likely to put
+    `ρ` above 1 and produce a run with no equilibrium at all. `dg_assoc` and the monomer supply
+    enter here and nowhere else in the ensemble: both scale `T` uniformly, so they move `ρ` but
+    leave `sequence_correlation_length` alone.
     """
     return _perron_and_subdominant(transfer_matrix(energies, rt=rt, monomer=monomer,
                                                   dg_assoc=dg_assoc))[0]
 
 
-def mean_length(energies: BondEnergies, *, monomer=1.0, dg_assoc: float = 0.0,
+def mean_length(energies: BondEnergies, *, dg_assoc: float, monomer=1.0,
                 rt: float = 1.0) -> float:
     """Number-average polymer length at equilibrium, `1/(1−ρ)` — Flory's result.
 
@@ -808,7 +821,7 @@ def mean_length(energies: BondEnergies, *, monomer=1.0, dg_assoc: float = 0.0,
 
 
 def sequence_correlation_length(energies: BondEnergies, *, rt: float = 1.0, monomer=1.0,
-                                dg_assoc: float = 0.0) -> float:
+                                dg_assoc: float = 0.0) -> float:      # default KEPT -- see below
     """How far along a chain one residue's identity biases the next, in bonds.
 
     `ξ = 1 / ln(λ₁/|λ₂|)`, the Ising correlation length of the equilibrium sequence
@@ -825,6 +838,13 @@ def sequence_correlation_length(energies: BondEnergies, *, rt: float = 1.0, mono
     ⚠ Unaffected by `monomer` and `dg_assoc` when the monomer supply is even, since both
     scale the matrix and cancel from the ratio. They are arguments only so that an uneven
     supply, which does not cancel, can be passed.
+
+    ⚠ **This is the one function in the module that keeps a `dg_assoc` default, and the
+    exemption is the point.** Everywhere the association cost changes the answer it is now
+    required, because `0.0` is a physical claim rather than a neutral absence. Here it
+    provably cancels — `tests/test_thermo.py` asserts the result is unchanged at
+    `dg_assoc=7.0` — so requiring it would force callers to type a value that does nothing,
+    which trains the reflex that makes the requirement useless everywhere else.
 
     ⚠ A subdominant eigenvalue below `_EIGENVALUE_FLOOR` of the leading one is read as zero.
     Without that floor an additive assignment returns 0.027 rather than 0 — roundoff in

@@ -154,9 +154,9 @@ class TestDetailedBalanceIsStructural:
     def test_enablement_is_an_infinite_violation(self):
         net = binary_polymer(max_len=4, food_len=1, p=0.01, cleavage=True,
                              rng=np.random.default_rng(0))
-        k = reaction_rate_constants(net, NONADDITIVE, barrier=6.0)
+        k = reaction_rate_constants(net, NONADDITIVE, barrier=6.0, dg_assoc=0.0)
         k[0] = 0.0                       # the reverse of some reaction cannot happen at all
-        assert detailed_balance_residual(net, k, NONADDITIVE) == float("inf")
+        assert detailed_balance_residual(net, k, NONADDITIVE, dg_assoc=0.0) == float("inf")
 
     def test_an_irreversible_network_RAISES_rather_than_returning_zero(self):
         """Silence is not a negative.
@@ -169,7 +169,7 @@ class TestDetailedBalanceIsStructural:
                              rng=np.random.default_rng(0))
         assert reversible_pairs(net) == ()
         with pytest.raises(ValueError, match="no reversible pairs"):
-            detailed_balance_residual(net, np.ones(net.n_reactions), NONADDITIVE)
+            detailed_balance_residual(net, np.ones(net.n_reactions), NONADDITIVE, dg_assoc=0.0)
 
     def test_pairs_are_matched_on_the_reaction_and_not_on_position(self):
         net = binary_polymer(max_len=4, food_len=1, p=0.0, cleavage=True,
@@ -186,7 +186,7 @@ class TestDetailedBalanceIsStructural:
         e = np.ones(net.n_reactions)
         e[reversible_pairs(net)[0][0]] = 100.0        # the ligation half only
         with pytest.raises(ValueError, match="differs across"):
-            reaction_rate_constants(net, NONADDITIVE, barrier=6.0, enhancement=e)
+            reaction_rate_constants(net, NONADDITIVE, barrier=6.0, enhancement=e, dg_assoc=0.0)
 
     def test_a_paired_enhancement_is_accepted_and_leaves_the_residual_at_zero(self):
         net = binary_polymer(max_len=4, food_len=1, p=0.01, cleavage=True,
@@ -194,8 +194,8 @@ class TestDetailedBalanceIsStructural:
         e = np.ones(net.n_reactions)
         for i, j in reversible_pairs(net)[:5]:
             e[i] = e[j] = 100.0
-        k = reaction_rate_constants(net, NONADDITIVE, barrier=6.0, enhancement=e)
-        assert detailed_balance_residual(net, k, NONADDITIVE) < 1e-12
+        k = reaction_rate_constants(net, NONADDITIVE, barrier=6.0, enhancement=e, dg_assoc=0.0)
+        assert detailed_balance_residual(net, k, NONADDITIVE, dg_assoc=0.0) < 1e-12
 
 
 class TestReactionFreeEnergiesOnANetwork:
@@ -369,9 +369,11 @@ class TestFlory:
                                                     max_len=2)[2]
                             / self._weights_by_length(be, monomer=0.15, dg_assoc=0.0,
                                                        max_len=2)[1])
-        assert first(UNIFORM) == pytest.approx(elongation_ratio(UNIFORM, monomer=0.15),
+        assert first(UNIFORM) == pytest.approx(
+            elongation_ratio(UNIFORM, monomer=0.15, dg_assoc=0.0),
                                                rel=1e-12)
-        assert first(ADDITIVE) != pytest.approx(elongation_ratio(ADDITIVE, monomer=0.15),
+        assert first(ADDITIVE) != pytest.approx(
+            elongation_ratio(ADDITIVE, monomer=0.15, dg_assoc=0.0),
                                                 rel=1e-3)
 
     def test_the_boundary_term_costs_mean_length_1_4_percent_here(self):
@@ -381,13 +383,14 @@ class TestFlory:
         assignment, asymptotic otherwise" has a number behind it.
         """
         be = ADDITIVE
-        m = 0.4 / elongation_ratio(be, monomer=1.0)          # put rho at 0.4
-        rho = elongation_ratio(be, monomer=m)
+        m = 0.4 / elongation_ratio(be, monomer=1.0, dg_assoc=0.0)          # put rho at 0.4
+        rho = elongation_ratio(be, monomer=m, dg_assoc=0.0)
         w = self._weights_by_length(be, monomer=m, dg_assoc=0.0, max_len=16)
         n = w[1:].sum() + w[16] * rho / (1 - rho)
         lsum = (sum(L * w[L] for L in range(1, 17))
                 + w[16] * rho * (17 - 16 * rho) / (1 - rho) ** 2)
-        assert mean_length(be, monomer=m) / (lsum / n) == pytest.approx(1.014, abs=5e-4)
+        assert (mean_length(be, monomer=m, dg_assoc=0.0) / (lsum / n)
+                == pytest.approx(1.014, abs=5e-4))
 
     def test_a_non_additive_assignment_is_geometric_only_ASYMPTOTICALLY(self):
         """And the approach is governed by the correlation length, which is why the two
@@ -410,14 +413,14 @@ class TestFlory:
         tail_n = w[1] * rho ** 12 / (1 - rho)
         tail_l = w[1] * rho ** 12 * (13 - 12 * rho) / (1 - rho) ** 2
         assert (lsum_head + tail_l) / (n_head + tail_n) == pytest.approx(
-            mean_length(be, monomer=m), rel=1e-9)
+            mean_length(be, monomer=m, dg_assoc=0.0), rel=1e-9)
 
     def test_runaway_polymerisation_raises_instead_of_returning_a_length(self):
         """`rho >= 1` has no equilibrium: any mean length reported there is a statement
         about `max_len`, not about the chemistry."""
-        assert elongation_ratio(UNIFORM, monomer=2.0) > 1.0
+        assert elongation_ratio(UNIFORM, monomer=2.0, dg_assoc=0.0) > 1.0
         with pytest.raises(ValueError, match="runs away"):
-            mean_length(UNIFORM, monomer=2.0)
+            mean_length(UNIFORM, monomer=2.0, dg_assoc=0.0)
 
     def test_dg_assoc_is_what_decides_whether_polymers_form_at_all(self):
         """It is the only sequence- and length-independent term, and the default of 0.0 is a
@@ -436,7 +439,7 @@ class TestSignConvention:
         """Passing a bond 'strength' of +2 gives a chemistry that depolymerises, at a
         perfectly reasonable-looking rate."""
         assert equilibrium_constant(BondEnergies.uniform(2.0).ligation("0", "0")) < 1.0
-        assert elongation_ratio(BondEnergies.uniform(2.0), monomer=1.0) < 1.0
+        assert elongation_ratio(BondEnergies.uniform(2.0), monomer=1.0, dg_assoc=0.0) < 1.0
 
 
 class TestGuards:
@@ -499,26 +502,27 @@ class TestBeyondABinaryAlphabet:
 
     def test_a_positive_matrix_really_can_have_complex_subdominant_eigenvalues(self):
         """The premise. Rejecting these as impossible refused an ordinary chemistry."""
-        vals = np.linalg.eigvals(transfer_matrix(self.COMPLEX_SUB))
+        vals = np.linalg.eigvals(transfer_matrix(self.COMPLEX_SUB, dg_assoc=0.0))
         assert np.max(np.abs(vals.imag)) > 1.0
         lead = vals[int(np.argmax(np.abs(vals)))]
         assert abs(lead.imag) < 1e-12 and lead.real > 0      # ...but the Perron root is real
 
     def test_the_correlation_length_uses_the_MODULUS_and_does_not_raise(self):
         xi = sequence_correlation_length(self.COMPLEX_SUB)
-        vals = np.linalg.eigvals(transfer_matrix(self.COMPLEX_SUB))
+        vals = np.linalg.eigvals(transfer_matrix(self.COMPLEX_SUB, dg_assoc=0.0))
         order = np.sort(np.abs(vals))[::-1]
         assert xi == pytest.approx(1.0 / np.log(order[0] / order[1]))
 
     def test_elongation_ratio_is_the_perron_root(self):
-        vals = np.linalg.eigvals(transfer_matrix(self.COMPLEX_SUB))
-        assert elongation_ratio(self.COMPLEX_SUB) == pytest.approx(
+        vals = np.linalg.eigvals(transfer_matrix(self.COMPLEX_SUB, dg_assoc=0.0))
+        assert elongation_ratio(self.COMPLEX_SUB, dg_assoc=0.0) == pytest.approx(
             float(np.max(np.abs(vals))))
 
     def test_a_uniform_four_letter_chemistry_still_has_zero_correlation(self):
         dna = BondEnergies(np.full((4, 4), -1.0), alphabet="ACGT")
         assert sequence_correlation_length(dna) == 0.0
-        assert elongation_ratio(dna, monomer=0.1) == pytest.approx(4 * 0.1 * np.exp(1.0))
+        assert elongation_ratio(dna, monomer=0.1, dg_assoc=0.0) == pytest.approx(
+            4 * 0.1 * np.exp(1.0))
 
 
 class TestArgumentGuards:
@@ -529,7 +533,7 @@ class TestArgumentGuards:
         lambda rt: rate_constants(0.0, barrier=1.0, rt=rt),
         lambda rt: enhancement_from_barrier_drop(1.0, rt=rt),
         lambda rt: barrier_drop_from_enhancement(2.0, rt=rt),
-        lambda rt: transfer_matrix(UNIFORM, rt=rt),
+        lambda rt: transfer_matrix(UNIFORM, rt=rt, dg_assoc=0.0),
     ])
     @pytest.mark.parametrize("rt", [0.0, -1.0])
     def test_a_non_positive_rt_is_refused_everywhere(self, call, rt):
@@ -552,7 +556,7 @@ class TestArgumentGuards:
 
     def test_a_non_positive_monomer_concentration_is_refused(self):
         with pytest.raises(ValueError, match="monomer concentrations must be positive"):
-            transfer_matrix(UNIFORM, monomer=0.0)
+            transfer_matrix(UNIFORM, monomer=0.0, dg_assoc=0.0)
 
     def test_an_enhancement_of_the_wrong_length_is_refused(self):
         """Not silently broadcast: a length mismatch here is a mis-built catalysis mask."""
@@ -560,7 +564,7 @@ class TestArgumentGuards:
                              rng=np.random.default_rng(0))
         with pytest.raises(ValueError, match="one value per reaction"):
             reaction_rate_constants(net, NONADDITIVE, barrier=6.0,
-                                    enhancement=np.ones(3))
+                                    enhancement=np.ones(3), dg_assoc=0.0)
 
     def test_residues_may_be_given_as_indices(self):
         """`bond(0, 1)` and `bond('0', '1')` are the same bond; an integer is not a name."""
@@ -644,7 +648,7 @@ class TestReviewFindings:
         arr[i] = bump
         kw = {"barrier": 8.0, name: arr} if name != "barrier" else {"barrier": arr}
         with pytest.raises(ValueError, match=f"{name} differs across"):
-            reaction_rate_constants(net, NONADDITIVE, **kw)
+            reaction_rate_constants(net, NONADDITIVE, **kw, dg_assoc=0.0)
 
     @pytest.mark.parametrize("name", ["barrier", "beta", "prefactor", "enhancement"])
     def test_a_paired_per_reaction_quantity_is_accepted_and_stays_lawful(self, name):
@@ -656,8 +660,8 @@ class TestReviewFindings:
         for i, j in reversible_pairs(net)[:5]:
             arr[i] = arr[j] = bump
         kw = {"barrier": 8.0, name: arr} if name != "barrier" else {"barrier": arr}
-        k = reaction_rate_constants(net, NONADDITIVE, **kw)
-        assert detailed_balance_residual(net, k, NONADDITIVE) < 1e-12
+        k = reaction_rate_constants(net, NONADDITIVE, **kw, dg_assoc=0.0)
+        assert detailed_balance_residual(net, k, NONADDITIVE, dg_assoc=0.0) < 1e-12
 
     @pytest.mark.parametrize("name", ["barrier", "prefactor"])
     def test_a_per_reaction_quantity_of_the_wrong_length_is_refused(self, name):
@@ -665,7 +669,7 @@ class TestReviewFindings:
                              rng=np.random.default_rng(0))
         kw = {"barrier": 8.0, name: np.ones(3)} if name != "barrier" else {"barrier": np.ones(3)}
         with pytest.raises(ValueError, match=f"{name} has shape"):
-            reaction_rate_constants(net, NONADDITIVE, **kw)
+            reaction_rate_constants(net, NONADDITIVE, **kw, dg_assoc=0.0)
 
     @pytest.mark.parametrize("n", [3, 999])
     def test_a_misaligned_k_is_refused_rather_than_indexed(self, n):
@@ -674,7 +678,7 @@ class TestReviewFindings:
         net = binary_polymer(max_len=4, food_len=1, p=0.01, cleavage=True,
                              rng=np.random.default_rng(0))
         with pytest.raises(ValueError, match="k has shape"):
-            detailed_balance_residual(net, np.ones(n), NONADDITIVE)
+            detailed_balance_residual(net, np.ones(n), NONADDITIVE, dg_assoc=0.0)
 
     def test_the_free_energy_loop_is_not_duplicated(self):
         """`reaction_rate_constants` now takes its ΔG from `reaction_free_energies`, so the
@@ -685,3 +689,58 @@ class TestReviewFindings:
         k = reaction_rate_constants(net, NONADDITIVE, barrier=8.0, dg_assoc=0.5)
         for i, j in reversible_pairs(net):
             assert np.log(k[i] / k[j]) == pytest.approx(-dg[i], abs=1e-12)
+
+
+class TestAssociationCostIsRequired:
+    """`dg_assoc = 0.0` is a physical claim, so it may not arrive by default.
+
+    Same rule as `permeation_flux` requiring both volumes: where a value that looks like an
+    absence is really an assertion, there is no default that would let it happen silently.
+    `0.0` asserts that joining two molecules is free at the standard state — and, since a
+    ligation releases water, that `a_W = 1`, i.e. permanently wet. Ross & Deamer put
+    phosphodiester formation at +3.3 kcal/mol at 85 C (~ +4.7 RT, K1 ~ 1e-3), so zero is not
+    a small value of this quantity; it is a different claim.
+    """
+
+    NET = binary_polymer(max_len=4, food_len=1, p=0.01, cleavage=True,
+                         rng=np.random.default_rng(0))
+
+    @pytest.mark.parametrize("call", [
+        lambda: reaction_free_energies(NONADDITIVE.__class__(NONADDITIVE.e), NONADDITIVE),
+        lambda: transfer_matrix(UNIFORM),
+        lambda: elongation_ratio(UNIFORM, monomer=0.1),
+        lambda: mean_length(UNIFORM, monomer=0.1),
+    ])
+    def test_omitting_it_is_a_TypeError_not_a_silent_zero(self, call):
+        with pytest.raises(TypeError, match="dg_assoc"):
+            call()
+
+    def test_the_network_entry_points_require_it_too(self):
+        for call in (
+            lambda: reaction_free_energies(self.NET, NONADDITIVE),
+            lambda: reaction_rate_constants(self.NET, NONADDITIVE, barrier=6.0),
+            lambda: detailed_balance_residual(self.NET, np.ones(self.NET.n_reactions),
+                                              NONADDITIVE),
+        ):
+            with pytest.raises(TypeError, match="dg_assoc"):
+                call()
+
+    def test_the_value_it_used_to_default_to_is_the_one_that_breaks_equilibrium(self):
+        """Not a hypothetical risk: 0.0 is exactly the setting most likely to run away.
+
+        At a monomer concentration of 0.5 with a uniform bond energy of -1, the old default
+        puts the elongation ratio above 1 — no equilibrium exists — while any realistic
+        association cost brings it back below.
+        """
+        assert elongation_ratio(UNIFORM, monomer=0.5, dg_assoc=0.0) > 1.0
+        assert elongation_ratio(UNIFORM, monomer=0.5, dg_assoc=4.7) < 1.0    # ~ +3.3 kcal/mol
+
+    def test_the_one_function_that_KEEPS_its_default_is_the_one_where_it_cancels(self):
+        """`sequence_correlation_length` is exempt because the argument provably does nothing.
+
+        Requiring a value that cannot change the answer would train the reflex of typing
+        `dg_assoc=0.0` without thinking, which is what makes the requirement worthless
+        everywhere it matters.
+        """
+        assert sequence_correlation_length(NONADDITIVE) == pytest.approx(
+            sequence_correlation_length(NONADDITIVE, dg_assoc=7.0))

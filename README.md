@@ -268,6 +268,25 @@ and `kinetics_from_energies` refuses them.
 potential at the boundary. It does not relax to the equilibrium ensemble computed above, and
 comparing the two directly would be comparing a driven steady state to an equilibrium.
 
+**`dg_assoc` is required, with no default.** The association cost — the standard-state price of
+turning two molecules into one — is the only sequence- and length-independent term in a ligation,
+and `0.0` is not a neutral absence but the claim *"joining is free"*. For scale, Ross & Deamer
+(*Life* **6**(3):28) put phosphodiester formation at **+3.3 kcal/mol at 85 °C (≈ +4.7 RT,
+K₁ ≈ 1e-3)**, so zero is not a small value of this quantity — it is a different claim. It also
+decides whether an equilibrium exists at all: at monomer 0.5 with `E = −1`, `dg_assoc = 0` puts the
+elongation ratio **above 1** (runaway, no equilibrium) and `+4.7` brings it back below.
+
+Same rule as `permeation_flux` requiring both volumes: where a value that looks like an absence is
+really an assertion, there is no default that would let it happen silently. ⚠ The single exemption
+is `sequence_correlation_length`, where the argument **provably cancels** — requiring a value that
+cannot change the answer only trains the reflex that makes the requirement worthless everywhere
+else.
+
+⚠ And it is where **water activity** enters, since a ligation releases water: mass action for
+`N_m + N_n ⇌ N_{m+n} + H₂O` puts `+RT·ln(a_W)` in exactly this term, negative when dry. So the old
+default silently asserted `a_W = 1` — permanently wet. **Not implemented**: that is the form, not a
+number.
+
 ⚠ Calibration tier: **algebraic**, not empirical. Everything above is an identity that holds or
 does not, so it sits beside `dilution` rather than beside the figure reproductions — but it
 reproduces no experiment and calibrates against no published number. It says the model is
