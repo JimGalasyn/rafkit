@@ -92,11 +92,14 @@ counted as **one** catalysed reaction, not two. Use `net.catalysis_level` — no
 | `max_urafs` | uninhibited RAFs, when a molecule can prevent a reaction |
 | `run_serial_dilution` / `run_cstr` | dilution protocols for growing–dividing compartments — **not a RAF algorithm**, see below |
 | `permeation_flux` / `permeable_by_length` | size-selective transport across a compartment membrane — **not a RAF algorithm**, see below |
+| `BondEnergies` / `rate_constants` | free energy of a polymer chemistry, and the rate constants it forces — **not a RAF algorithm**, see below |
+| `detailed_balance_residual` | whether a set of rate constants is consistent with the free energies |
+| `elongation_ratio` / `mean_length` / `sequence_correlation_length` | the equilibrium ensemble, closed form |
 
 Every algorithm carries hand-computed known-answer tests, because a RAF algorithm that
 is subtly wrong produces plausible numbers rather than errors.
 
-## Two modules are deliberately off-theme: `dilution` and `permeation`
+## Three modules are deliberately off-theme: `dilution`, `permeation` and `thermo`
 
 Everything above takes a `ReactionNetwork` and asks a RAF question of it. `rafkit.dilution`
 takes no network at all — it is a **two-species ordinary differential equation with no RAF
@@ -157,6 +160,81 @@ it sits with this library's reference-implementation and figure checks — **not
 deterministic properties (equal concentrations give zero flux; equal *counts* do not; flux
 bounded by what is present), because a library gate should be fast and exact; the stochastic
 reproduction lives in the downstream research client.
+
+### `thermo` — the free energy the rest of the library leaves implicit
+
+`rafkit.thermo` is the third off-theme module, and it is here because **the rest of this
+library already has a thermodynamics — an unwritten one, and it is the wrong one.**
+
+`gillespie` gives every reaction a unit rate constant. In a cleavage–ligation chemistry that
+means `k_f = k_r` for every reaction, so `K_eq = 1` and `ΔG° = 0`: **every polymer is
+isoenergetic with the parts it is made of.** Nothing is more stable than anything else, no
+sequence is preferred over any other, and the polymer growth those runs show is driven
+entirely by the food boundary condition. That is not a badly chosen parameter; it is free
+energy being *absent* while the model talks as though it were present. The check is one call —
+against a bond energy of −1 to −3 with an association cost of 0.5, unit rate constants score a
+`detailed_balance_residual` of 2.5, and the rates this module builds score 2×10⁻¹⁶.
+
+**Catalysis has the same problem one level down.** Where the uncatalysed rate is zero,
+"catalysis" is not acceleration but *enablement*: the catalyst decides whether the reaction
+exists at all, so "which species catalyses what" becomes a choice of which reactions there
+are, wearing a kinetic name. A catalyst that enables also moves the equilibrium — from
+unreachable to reachable — and no catalyst does that. Here a catalyst is a ratio applied to
+**both directions at once**, which is the only form leaving `K_eq` alone; the residual for
+enablement is `inf`, not a large number. For scale, 100× is a barrier drop of 11.4 kJ/mol at
+298 K, about one hydrogen bond.
+
+Detailed balance is structural rather than imposed: the barrier is split between the two
+directions in the Brønsted way, `ΔG‡_f = barrier + β·ΔG` and `ΔG‡_r = barrier − (1−β)·ΔG`, so
+`k_f/k_r = exp(−ΔG/RT)` identically for **every** barrier and every `β`. There is no parameter
+setting that violates it, and `k_uncat` stops being a switch: fix the barrier and both rates
+follow, neither of them zero.
+
+**Why three bond energies and not one.** A uniform bond energy gives every equal-length
+sequence identical free energy, so no thermodynamic sequence preference can exist — in a unary
+alphabet the question cannot arise, in a binary one it is the whole point. But "uniform" is not
+the tight condition. The ensemble these energies induce is exactly a **one-dimensional Ising
+chain**, whose transfer matrix loses its second eigenvalue whenever
+
+```
+ε = E₀₀ + E₁₁ − E₀₁ − E₁₀ = 0
+```
+
+— the *additive* case `E[a][b] = h(a) + g(b)`, where the bond energy says something about the
+left residue and something about the right one and nothing about the pair. (Under
+`BondEnergies.symmetric`, where `E₀₁ = E₁₀`, that is the familiar `E₀₀ + E₁₁ − 2·E₀₁`. The
+matrix is not required to be symmetric — a directional backbone need not be — and the doubled
+form reports a preference that is not there when it is not.) Every additive assignment has a sequence correlation length
+of exactly zero, uniform or not, so three energies satisfying `E₀₁ = (E₀₀+E₁₁)/2` buy nothing
+over one. **It is the non-additivity `ε` alone that makes ordering thermodynamically visible**:
+`ε > 0` favours alternation, `ε < 0` favours blocks. That is where a thermodynamic basis for
+templating would have to come from, as opposed to an imposed rule.
+
+Two exact anchors, both in `tests/test_thermo.py`:
+
+| claim | status |
+|---|---|
+| ΔG of a ligation is the **junction bond alone**, and every split of every sequence agrees | exact — this is Wegscheider consistency |
+| equilibrium length distribution is geometric with ratio `ρ = λ_max(T)`, mean `1/(1−ρ)` | exact for an additive assignment, from the first **bond** |
+
+⚠ That last row was wrong in its first form, and the correction is worth stating: the geometric
+law starts at the first *bond*, not the first *molecule*. A monomer has no bonds, so the step
+from length 1 to length 2 is a boundary term and need not equal `ρ`. A uniform assignment hides
+this — its first step happens to equal `ρ` — so the null case is the one case where the effect
+is invisible. On an additive-but-not-uniform assignment at `ρ = 0.4` the first step is 0.377 and
+`mean_length` overstates the true number-average by 1.4%.
+
+⚠ And a third, found only because the binary case is the easy one: **Perron–Frobenius
+constrains the leading eigenvalue and nothing else.** A positive matrix of size 3 or more may
+have complex subdominant eigenvalues — a randomly drawn 4×4 bond-energy matrix does on the
+first try — so rejecting them as impossible refused an ordinary nucleotide chemistry. They are
+legitimate: a complex pair is a correlation that *oscillates* as it decays, and the decay
+length is set by the modulus either way.
+
+⚠ Calibration tier: **algebraic**, not empirical. Everything above is an identity that holds or
+does not, so it sits beside `dilution` rather than beside the figure reproductions — but it
+reproduces no experiment and calibrates against no published number. It says the model is
+*consistent*, not that it is *right*.
 
 ## A reaction network is a Petri net
 
