@@ -519,10 +519,27 @@ def unpaired_catalysis(net) -> tuple[tuple[int, int], ...]:
     the same violation as scaling `k_f` alone, arrived at through the chemistry rather than
     through the rate constants.
 
-    ⚠ This is what `binary_polymer(paired_catalysis=False)` generates. Its docstring calls the
-    result "a different chemistry" whose `f` is not comparable to the published one, which is
-    true and understates it: the chemistry is **thermodynamically impossible**, not merely
-    differently parameterised. `paired_catalysis=True`, the default, returns `()` here.
+    ⚠ This is what `binary_polymer(paired_catalysis=False)` generates, and **not as a rare edge
+    case**. Measured at `max_len=6`, `food_len=2`, `p=4e-3` over ten seeds, of 516 reversible
+    pairs per network:
+
+    | | pairs | share |
+    |---|---|---|
+    | catalysed in **one direction only** | 243 | 47.1% |
+    | both catalysed, but by **different molecules** | 82 | 15.9% |
+    | **total violating** | **325** | **62.9%** |
+
+    ⚠ The second row counts too, and it is the one that gets missed. A pair catalysed forward by
+    `{29}` and backward by `{4}` looks symmetric until you notice that a state holding 29 and not
+    4 enhances the forward direction alone. **Only identical catalyst sets are safe**, which is
+    why this function tests `!=` rather than looking for an empty side — and why the honest
+    figure is 63% of the reversible chemistry, not the 47% that counting one-sided pairs gives.
+
+    `binary_polymer`'s docstring calls that arm "a different chemistry" whose `f` is not
+    comparable to the published one. True, and it understates it: the chemistry is
+    **thermodynamically impossible**, not merely differently parameterised.
+    `paired_catalysis=True`, the default, returns `()` here — catalyst sets are shared across
+    the pair by construction, so *catalysis of a ligation implies catalysis of its cleavage*.
 
     Returns the offending pairs rather than a bool, because the useful next question is
     always *which reactions*.

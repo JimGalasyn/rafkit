@@ -265,3 +265,33 @@ class TestKineticsGuards:
     def test_the_enhancement_may_be_per_reaction(self):
         kin = Kinetics(k_uncat=np.ones(2), enhancement=np.array([10.0, 100.0]))
         assert kin.rates([True, True]) == pytest.approx([10.0, 100.0])
+
+    def test_a_pair_catalysed_by_DIFFERENT_molecules_violates_too(self):
+        """The row that gets missed when you count one-sided pairs.
+
+        Forward catalysed by `{x}` and backward by `{y}` looks symmetric. It is not: a state
+        holding `x` and not `y` enhances the forward direction alone. Only IDENTICAL catalyst
+        sets are safe, which is why `unpaired_catalysis` tests `!=` rather than emptiness —
+        and why the violating share of an unpaired chemistry is 63%, not the 47% that counting
+        one-sided pairs gives.
+        """
+        net = _net(p=0.0)
+        i, j = _distinct_reactant_pair(net)
+        a, b, ab = net.reactions[i]
+        spare = [m for m in range(net.n_molecules) if m not in (a, b, ab)][:2]
+        chi = list(net.catalysts)
+        chi[i] = normalise([spare[0]])            # forward catalyst
+        chi[j] = normalise([spare[1]])            # backward catalyst -- BOTH sides catalysed
+        net = dataclasses.replace(net, catalysts=tuple(chi))
+
+        assert net.catalysts[i] and net.catalysts[j]      # neither side is bare
+        assert (i, j) in unpaired_catalysis(net)          # ...and it is still caught
+
+    def test_the_violating_share_of_an_unpaired_chemistry_is_about_two_thirds(self):
+        """The number that belongs in the docstring, re-measured so it cannot drift."""
+        shares = []
+        for seed in range(5):
+            net = binary_polymer(max_len=6, food_len=2, p=4e-3, cleavage=True,
+                                 paired_catalysis=False, rng=np.random.default_rng(seed))
+            shares.append(len(unpaired_catalysis(net)) / len(reversible_pairs(net)))
+        assert np.mean(shares) == pytest.approx(0.63, abs=0.03)
