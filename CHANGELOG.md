@@ -5,6 +5,31 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **`dg_assoc` is now required, with no default**, in every `rafkit.thermo` entry point whose
+  answer depends on it: `reaction_free_energies`, `reaction_rate_constants`,
+  `detailed_balance_residual`, `kinetics_from_energies`, `transfer_matrix`, `elongation_ratio`
+  and `mean_length`. ⚠ **Breaking**, and deliberately so: `0.0` is not a neutral absence but the
+  claim *"joining two molecules is free at the standard state"*. Ross & Deamer (*Life* 6(3):28)
+  put phosphodiester formation at +3.3 kcal/mol at 85 C (~ +4.7 RT, K1 ~ 1e-3), so zero is not a
+  small value of this quantity — it is a different claim. It also decides whether an equilibrium
+  exists: at monomer 0.5 with `E = -1`, `dg_assoc = 0` puts the elongation ratio above 1 (runaway,
+  no equilibrium) and +4.7 brings it back below. Same rule as `permeation_flux` requiring both
+  volumes.
+
+  ⚠ It is also where **water activity** enters — a ligation releases water, so mass action puts
+  `+RT*ln(a_W)` in exactly this term. The old default silently asserted `a_W = 1`, permanently wet.
+  Not implemented; that is the form, not a number.
+
+  ⚠ **One deliberate exemption**: `sequence_correlation_length` keeps its default, because there
+  the argument *provably cancels* (asserted in the suite at `dg_assoc=7.0`). Requiring a value
+  that cannot change the answer would train the reflex of typing `dg_assoc=0.0` without thinking,
+  which is exactly what makes the requirement worthless everywhere it matters.
+
+  Updating the suite made the scale of the old silence visible: **32 call sites** were relying on
+  the default, i.e. asserting `a_W = 1` without saying so.
+
 ### Added
 
 - **`rafkit.thermo` reaches the simulator.** `Kinetics` (per-reaction *uncatalysed* rate

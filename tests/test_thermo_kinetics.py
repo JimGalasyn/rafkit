@@ -163,7 +163,7 @@ class TestUnpairedCatalysisIsThermodynamicallyImpossible:
     def test_kinetics_refuses_it_rather_than_producing_plausible_rates(self):
         with pytest.raises(ValueError, match="different catalyst sets"):
             kinetics_from_energies(_net(p=0.05, paired=False), ENERGIES, barrier=8.0,
-                                   enhancement=100.0)
+                                   enhancement=100.0, dg_assoc=0.0)
 
     def test_a_catalyst_on_one_direction_only_really_does_unbalance_it(self):
         """Why the refusal is not pedantry: the free-energy source, measured.
@@ -390,14 +390,14 @@ class TestReviewFindingsOnTheWiring:
         assert unpaired_catalysis(sym) == ()
         assert unpaired_inhibition(sym)
         with pytest.raises(ValueError, match="different inhibitor sets"):
-            kinetics_from_energies(sym, ENERGIES, barrier=8.0, enhancement=10.0)
+            kinetics_from_energies(sym, ENERGIES, barrier=8.0, enhancement=10.0, dg_assoc=0.0)
 
     def test_symmetric_inhibition_is_lawful_and_accepted(self):
         """Blocking BOTH directions is zero flux and no violation; only asymmetry breaks it."""
         net = binary_polymer(max_len=4, food_len=1, p=0.01, cleavage=True, q=0.05,
                              paired_catalysis=True, rng=np.random.default_rng(1))
         assert unpaired_inhibition(net) == ()
-        kinetics_from_energies(net, ENERGIES, barrier=8.0, enhancement=10.0)
+        kinetics_from_energies(net, ENERGIES, barrier=8.0, enhancement=10.0, dg_assoc=0.0)
 
     def test_propensities_uses_Kinetics_rates_rather_than_a_second_copy(self):
         """The enhancement rule had two implementations and only the inline one was exercised.
@@ -425,7 +425,7 @@ class TestReviewFindingsOnTheWiring:
         monkeypatch.setattr(th, "reversible_pairs",
                             lambda net: (calls.append(1), real(net))[1])
         net = _net(p=0.01)
-        th.kinetics_from_energies(net, ENERGIES, barrier=8.0, enhancement=10.0)
+        th.kinetics_from_energies(net, ENERGIES, barrier=8.0, enhancement=10.0, dg_assoc=0.0)
         assert len(calls) == 1, f"reversible_pairs called {len(calls)} times"
 
     def test_a_network_with_no_inhibitor_field_is_handled(self):
