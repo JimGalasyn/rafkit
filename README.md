@@ -95,6 +95,8 @@ counted as **one** catalysed reaction, not two. Use `net.catalysis_level` — no
 | `BondEnergies` / `rate_constants` | free energy of a polymer chemistry, and the rate constants it forces — **not a RAF algorithm**, see below |
 | `detailed_balance_residual` | whether a set of rate constants is consistent with the free energies |
 | `elongation_ratio` / `mean_length` / `sequence_correlation_length` | the equilibrium ensemble, closed form |
+| `Kinetics` / `kinetics_from_energies` | rate constants a simulator can run on — `simulate(..., kinetics=...)` |
+| `unpaired_catalysis` | reversible pairs whose two directions have different catalysts, which is impossible |
 
 Every algorithm carries hand-computed known-answer tests, because a RAF algorithm that
 is subtly wrong produces plausible numbers rather than errors.
@@ -230,6 +232,41 @@ have complex subdominant eigenvalues — a randomly drawn 4×4 bond-energy matri
 first try — so rejecting them as impossible refused an ordinary nucleotide chemistry. They are
 legitimate: a complex pair is a correlation that *oscillates* as it decays, and the decay
 length is set by the modulus either way.
+
+**Reaching the simulator.** `kinetics_from_energies` turns bond energies into a `Kinetics` —
+per-reaction *uncatalysed* rate constants plus the factor a **present** catalyst applies — and
+`propensities(..., kinetics=...)` runs on it. The split is deliberate: `thermo` says what the rate
+constants are, and whether a catalyst is present at any instant is state, so the simulator never
+holds a "catalysed rate constant" it could apply to one direction.
+
+⚠ **The existing model was already in this form and did not say so.** `gillespie`'s uncatalysed
+factor of 20 *is* `Kinetics.uniform(net.n_reactions, 1/20, 20)`, and reproduces its propensities to the
+last ulp — so catalysis was never the missing piece. What was missing is the equilibrium: unit
+constants make `k_f = k_r` whether or not a catalyst is present, so `K_eq = 1` regardless.
+
+The consequence that can change a trajectory: a chemistry built this way has its **stationary point
+at the thermodynamic equilibrium.** Balance is on the *combinatorial factors* —
+`k_f · combos_forward = k_r · combos_reverse` — which for `a + b → ab` with `a ≠ b` is the familiar
+`n_ab/(n_a·n_b) = K`. A present catalyst raises both directions by the enhancement **without moving
+that point**. Under unit constants the balance sits at `K = 1` for every reaction, whatever the
+molecules are.
+
+⚠ **Not so for a self-ligation.** `a + a → aa` takes the pair count `n_a(n_a−1)/2`, so it balances at
+`n_aa = K·n_a(n_a−1)/2` and the count ratio `n_aa/n_a²` tends to **`K/2`**. Measured on `0 + 0 → 00`
+under unit constants at `n_a = 20`, balance is at `n_aa = 190`, not 400. The factor is the standard
+stochastic symmetry number and `_pair_count` is correct — but **the map from ΔG to a count ratio is
+not uniform across the chemistry**, and anyone reading equilibrium constants off a trajectory needs
+the qualification.
+
+⚠ `binary_polymer(paired_catalysis=False)` is not a variant chemistry — it is a **thermodynamically
+impossible** one. Drawing the two directions' catalysts separately gives molecules that accelerate a
+ligation but not its cleavage, and whenever such a molecule is present the reaction is a free-energy
+source; measured on a hand-built case, 100× net flux from nothing. `unpaired_catalysis` finds them
+and `kinetics_from_energies` refuses them.
+
+⚠ A `simulate` run with `kinetics` is still **driven**, not closed: the food floor holds a chemical
+potential at the boundary. It does not relax to the equilibrium ensemble computed above, and
+comparing the two directly would be comparing a driven steady state to an equilibrium.
 
 ⚠ Calibration tier: **algebraic**, not empirical. Everything above is an identity that holds or
 does not, so it sits beside `dilution` rather than beside the figure reproductions — but it

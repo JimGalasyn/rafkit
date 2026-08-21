@@ -22,10 +22,13 @@ from unreachable to reachable — and **no catalyst does that**. Here catalysis 
 11.4 kJ/mol at 298 K, about one hydrogen bond, and sits at the bottom of the weakest
 catalysis class (mineral 10¹–10⁴, ribozymes 10³–10⁹, enzymes 10⁶–10¹⁷).
 
-⚠ rafkit's own `gillespie` runs an uncatalysed reaction at `1/20` rather than at zero, so it
-already *has* a rate enhancement. But 20 there is a bare number: with no reverse rate derived
-from a free energy there is nothing for it to be a ratio *of*. This module supplies the
-missing half.
+⚠ **rafkit's own `gillespie` is already in the enhancement form and does not say so.** It runs an
+uncatalysed reaction at `1/20` rather than at zero, which is exactly `k_uncat = 1/20` with an
+enhancement of 20 — and `Kinetics.uniform(net.n_reactions, 1/20, 20)` reproduces its propensities
+identically, which is a test. So catalysis there was never the broken part. What is missing is
+the *equilibrium*: `k_f = k_r` for every reaction whether or not a catalyst is present, so
+`K_eq = 1` regardless and the 20 corresponds to no barrier on any energy scale. This module
+supplies that half, and `Kinetics` is the seam.
 
 **Why three bond energies and not one.** Virgo's construction assigns a fixed free energy per
 bond, so a polymer's free energy is proportional to its length. ⚠ **A uniform bond energy
@@ -80,7 +83,9 @@ __all__ = [
     "equilibrium_constant", "rate_constants", "catalysed_rates",
     "enhancement_from_barrier_drop", "barrier_drop_from_enhancement",
     "reaction_free_energies", "reaction_rate_constants",
-    "reversible_pairs", "detailed_balance_residual",
+    "reversible_pairs", "detailed_balance_residual", "unpaired_catalysis",
+    "unpaired_inhibition",
+    "Kinetics", "kinetics_from_energies",
     "transfer_matrix", "elongation_ratio", "mean_length",
     "sequence_correlation_length",
 ]
@@ -429,7 +434,7 @@ def _paired(value, name: str, n_reactions: int, pairs) -> np.ndarray:
 
 def reaction_rate_constants(net, energies: BondEnergies, *, barrier,
                             prefactor: float = 1.0, beta: float = 0.5, rt: float = 1.0,
-                            dg_assoc: float = 0.0, enhancement=1.0):
+                            dg_assoc: float = 0.0, enhancement=1.0, pairs=None):
     """Rate constant of every reaction in its stored direction — ready for `propensities`.
 
     A ligation entry gets the forward branch of the Brønsted split and its cleavage partner
@@ -458,7 +463,7 @@ def reaction_rate_constants(net, energies: BondEnergies, *, barrier,
     forward = directions > 0
     dg_lig = np.where(forward, 1.0, -1.0) * reaction_free_energies(net, energies,
                                                                   dg_assoc=dg_assoc)
-    pairs = reversible_pairs(net)
+    pairs = reversible_pairs(net) if pairs is None else pairs
     n = len(net.reactions)
     barrier = _paired(barrier, "barrier", n, pairs)
     beta = _paired(beta, "beta", n, pairs)
@@ -504,6 +509,189 @@ def detailed_balance_residual(net, k, energies: BondEnergies, *, dg_assoc: float
             return float("inf")           # enablement: not a large violation, an infinite one
         worst = max(worst, abs(float(np.log(k[i] / k[j]) + dg[i] / rt)))
     return worst
+
+
+def unpaired_catalysis(net, *, pairs=None) -> tuple[tuple[int, int], ...]:
+    """Reversible pairs whose two directions carry **different catalyst sets**.
+
+    A catalyst lowers a barrier, and the two directions of a reversible reaction share one.
+    So a molecule that catalyses the ligation but not the cleavage accelerates one direction
+    only, and **whenever that molecule is present the reaction is a source of free energy** —
+    the same violation as scaling `k_f` alone, arrived at through the chemistry rather than
+    through the rate constants.
+
+    ⚠ This is what `binary_polymer(paired_catalysis=False)` generates, and **not as a rare edge
+    case**. Measured at `max_len=6`, `food_len=2`, `p=4e-3` over ten seeds, of 516 reversible
+    pairs per network:
+
+    | | pairs | share |
+    |---|---|---|
+    | catalysed in **one direction only** | 243 | 47.1% |
+    | both catalysed, but by **different molecules** | 82 | 15.9% |
+    | **total violating** | **325** | **62.9%** |
+
+    ⚠ The second row counts too, and it is the one that gets missed. A pair catalysed forward by
+    `{29}` and backward by `{4}` looks symmetric until you notice that a state holding 29 and not
+    4 enhances the forward direction alone. **Only identical catalyst sets are safe**, which is
+    why this function tests `!=` rather than looking for an empty side — and why the honest
+    figure is 63% of the reversible chemistry, not the 47% that counting one-sided pairs gives.
+
+    `binary_polymer`'s docstring calls that arm "a different chemistry" whose `f` is not
+    comparable to the published one. True, and it understates it: the chemistry is
+    **thermodynamically impossible**, not merely differently parameterised.
+    `paired_catalysis=True`, the default, returns `()` here — catalyst sets are shared across
+    the pair by construction, so *catalysis of a ligation implies catalysis of its cleavage*.
+
+    Returns the offending pairs rather than a bool, because the useful next question is
+    always *which reactions*.
+    """
+    catalysts = net.catalysts
+    pairs = reversible_pairs(net) if pairs is None else pairs
+    return tuple((i, j) for i, j in pairs if catalysts[i] != catalysts[j])
+
+
+def unpaired_inhibition(net, *, pairs=None) -> tuple[tuple[int, int], ...]:
+    """Reversible pairs whose two directions carry **different inhibitor sets**.
+
+    The mirror of `unpaired_catalysis`, and a sharper violation. Inhibition in this library is
+    an absolute block rather than a barrier change -- `gillespie.propensities` zeroes the
+    propensity outright -- so an inhibitor present on one direction only makes that direction
+    **impossible while the other still fires**. That is `k = 0` on one half of a reversible
+    pair: the enablement case, whose detailed-balance residual is `inf`.
+
+    ⚠ Symmetric inhibition is lawful here. Blocking *both* directions stops the reaction
+    entirely, which is zero flux and no violation; only the asymmetry breaks anything.
+
+    ⚠ `binary_polymer` applies `paired_catalysis` to inhibitors too, so `q > 0` with
+    `paired_catalysis=False` produces this as well -- 63 of 68 pairs on a sampled network.
+    But it is also reachable with symmetric catalysts and hand-built asymmetric inhibitors,
+    which is why it needs its own check rather than riding on `unpaired_catalysis`.
+    """
+    inh = getattr(net, "inhibitors", ())
+    if not inh:
+        return ()
+    pairs = reversible_pairs(net) if pairs is None else pairs
+    return tuple((i, j) for i, j in pairs if inh[i] != inh[j])
+
+
+@dataclass(frozen=True, eq=False)
+class Kinetics:
+    """Per-reaction uncatalysed rate constants, and the factor a **present** catalyst applies.
+
+    The seam between this module and a simulator. `thermo` says what the rate constants are;
+    whether a catalyst is present at any moment is a property of the state and belongs to
+    `gillespie`. Splitting it this way is what keeps the enhancement a *ratio*: the simulator
+    never sees a "catalysed rate constant" it could apply to one direction.
+
+    `k_uncat` is one value per reaction **in its stored direction**, so a ligation entry and
+    its cleavage partner already stand in the ratio `exp(−ΔG/RT)`. `enhancement` is a scalar
+    or one value per reaction. Build it with `kinetics_from_energies`, which validates both
+    against the network's reversible pairs; constructing one by hand skips that.
+
+    ⚠ **The current model is already an instance of this.** `gillespie`'s uncatalysed factor of
+    20 is `Kinetics.uniform(net.n_reactions, 1/20, 20)`, and it reproduces those propensities
+    exactly. What it is not is thermodynamic: every `k_uncat` equal makes `K_eq = 1` for every
+    reaction.
+    """
+
+    k_uncat: np.ndarray
+    enhancement: np.ndarray
+
+    def __post_init__(self):
+        k = np.asarray(self.k_uncat, dtype=float)
+        if k.ndim != 1:
+            raise ValueError(f"k_uncat must be one value per reaction, got shape {k.shape}. "
+                             "For the same constant on every reaction use "
+                             "Kinetics.uniform(n_reactions, k_uncat, enhancement), which knows "
+                             "the count a bare scalar cannot supply.")
+        if np.any(k <= 0):
+            # A zero uncatalysed rate is enablement, which is what this module exists to
+            # remove; it would also make the pair's residual infinite.
+            raise ValueError("k_uncat must be positive for every reaction; a zero uncatalysed "
+                             "rate is enablement, not catalysis")
+        e = np.asarray(self.enhancement, dtype=float)
+        if e.ndim and e.shape != k.shape:
+            raise ValueError(f"enhancement has shape {e.shape}, expected a scalar or one "
+                             f"value per reaction {k.shape}")
+        if np.any(e <= 0):
+            raise ValueError(f"enhancement must be positive, got {self.enhancement}")
+        # Finiteness, for the same reason `BondEnergies` checks it: `inf > 0` passes a
+        # positivity test, and an infinite rate constant does not fail loudly -- it makes the
+        # total propensity `inf`, every normalised probability `nan`, and the simulator raise
+        # somewhere else entirely.
+        if not np.all(np.isfinite(k)) or not np.all(np.isfinite(e)):
+            raise ValueError("k_uncat and enhancement must be finite; an infinite rate makes "
+                             "every sampling probability NaN rather than making one reaction "
+                             "fast")
+        object.__setattr__(self, "k_uncat", k)
+        object.__setattr__(self, "enhancement", e)
+
+    @classmethod
+    def uniform(cls, n_reactions: int, k_uncat: float, enhancement: float) -> "Kinetics":
+        """The same constant on every reaction — the form the docstrings quote.
+
+        `Kinetics(k_uncat=1/20, enhancement=20)` cannot work: `k_uncat` is per reaction and a
+        bare scalar does not say how many there are. This constructor takes the count, so the
+        canonical example is runnable rather than illustrative::
+
+            Kinetics.uniform(net.n_reactions, 1 / 20, 20)   # == gillespie's default
+
+        ⚠ A uniform `k_uncat` is exactly the thermodynamic claim this module exists to remove:
+        equal rate constants in both directions make `K_eq = 1` for every reaction. Use it to
+        reproduce the existing model, not to run a new one.
+        """
+        return cls(k_uncat=np.full(int(n_reactions), float(k_uncat)),
+                   enhancement=float(enhancement))
+
+    @property
+    def n_reactions(self) -> int:
+        return int(self.k_uncat.size)
+
+    def rates(self, catalysed) -> np.ndarray:
+        """Rate constant of every reaction given a boolean mask of which are catalysed."""
+        catalysed = np.asarray(catalysed, dtype=bool)
+        if catalysed.shape != self.k_uncat.shape:
+            raise ValueError(f"catalysed has shape {catalysed.shape}, expected one flag per "
+                             f"reaction {self.k_uncat.shape}")
+        return self.k_uncat * np.where(catalysed, self.enhancement, 1.0)
+
+
+def kinetics_from_energies(net, energies: BondEnergies, *, barrier, enhancement,
+                           prefactor: float = 1.0, beta: float = 0.5, rt: float = 1.0,
+                           dg_assoc: float = 0.0) -> Kinetics:
+    """Build the `Kinetics` a network's bond energies imply.
+
+    `k_uncat` comes from `reaction_rate_constants`, so every reversible pair satisfies
+    detailed balance by construction, and `enhancement` is checked across those pairs for the
+    same reason. ⚠ It also refuses a chemistry whose catalyst *sets* are unpaired — see
+    `unpaired_catalysis` — because a lawful enhancement applied to an unlawful catalysis
+    assignment is still a free-energy source, and the rate constants alone cannot see it.
+
+    ⚠ `enhancement` is what a catalyst does **when present**, not `k_cat`. Passing an absolute
+    catalysed rate constant here silently rescales the whole chemistry, so the docstring says
+    it twice.
+    """
+    pairs = reversible_pairs(net)          # computed ONCE and threaded, not three times
+    unpaired = unpaired_catalysis(net, pairs=pairs)
+    if unpaired:
+        i, j = unpaired[0]
+        raise ValueError(
+            f"{len(unpaired)} reversible pair(s) have different catalyst sets, e.g. reactions "
+            f"{i} and {j}. A catalyst lowers the barrier the two directions share, so a "
+            "chemistry that catalyses one direction only is a source of free energy whenever "
+            "that catalyst is present. Generate it with paired_catalysis=True.")
+    blocked = unpaired_inhibition(net, pairs=pairs)
+    if blocked:
+        i, j = blocked[0]
+        raise ValueError(
+            f"{len(blocked)} reversible pair(s) have different inhibitor sets, e.g. reactions "
+            f"{i} and {j}. Inhibition here is an absolute block, so an inhibitor on one "
+            "direction only makes that direction impossible while the other still fires -- "
+            "k = 0 on half a reversible pair, whose residual is infinite.")
+    k = reaction_rate_constants(net, energies, barrier=barrier, prefactor=prefactor,
+                                beta=beta, rt=rt, dg_assoc=dg_assoc, pairs=pairs)
+    enhancement = _paired(enhancement, "enhancement", len(net.reactions), pairs)
+    return Kinetics(k_uncat=k, enhancement=enhancement)
 
 
 # ---------------------------------------------------------------------------------------
