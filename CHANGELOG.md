@@ -25,14 +25,27 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
   Sharpens the design premise it was built from. "A uniform bond energy admits no sequence
   preference" is true but not tight: the ensemble is a 1-D Ising chain, and its second
-  transfer eigenvalue vanishes for **every additive** assignment `E01 = (E00+E11)/2`, not
-  only the uniform one. So `nonadditivity` `ε = E00 + E11 - 2·E01` is the whole of the
+  transfer eigenvalue vanishes for **every additive** assignment `E00 + E11 = E01 + E10`, not
+  only the uniform one. So `nonadditivity` `ε = E00 + E11 - E01 - E10` is the whole of the
   sequence preference in one number — `ε > 0` alternating, `ε < 0` blocky, `ε = 0` blind —
   and three energies chosen additively buy nothing over one.
 
   ⚠ Calibration tier is **algebraic**: identities that hold or do not, reproducing no
   experiment and calibrating against no published number. It says the model is consistent,
   not that it is right.
+
+  ⚠ Four findings from code review, three of them silent wrong answers. (a)
+  `nonadditivity` used `2*E01` where the condition is `E01 + E10`, so it reported a sequence
+  preference of -3 for a genuinely additive non-symmetric assignment and contradicted
+  `sequence_correlation_length` on the same object — the matrix is not required to be
+  symmetric, and the doubled form is right only when it is. (b) `reaction_rate_constants`
+  checked `enhancement` across reversible pairs but not `barrier`, `beta` or `prefactor`, so
+  a per-reaction barrier gave the two halves of one reversible reaction different transition
+  states and passed, at a residual of 4.0. Not a catalyst, and just as much a free-energy
+  source; every per-reaction quantity is now checked by one helper. (c) `rate_constants`
+  crashed on the array `beta` it documents as supported (`truth value of an array is
+  ambiguous`). (d) `detailed_balance_residual` indexed `k` without a length check: a bare
+  `IndexError` when short, a residual over the wrong reactions when merely misaligned.
 
   ⚠ Three corrections found while testing, the first two recorded because the null case hid
   them. (i)

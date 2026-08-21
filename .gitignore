@@ -6,3 +6,7 @@ dist/
 .venv/
 .pytest_cache/
 campaign_out/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/

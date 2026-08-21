@@ -197,11 +197,14 @@ the tight condition. The ensemble these energies induce is exactly a **one-dimen
 chain**, whose transfer matrix loses its second eigenvalue whenever
 
 ```
-ε = E₀₀ + E₁₁ − 2·E₀₁ = 0
+ε = E₀₀ + E₁₁ − E₀₁ − E₁₀ = 0
 ```
 
-— the *additive* case `E[a][b] = h(a) + h(b)`, where the bond energy says something about each
-residue and nothing about the pair. Every additive assignment has a sequence correlation length
+— the *additive* case `E[a][b] = h(a) + g(b)`, where the bond energy says something about the
+left residue and something about the right one and nothing about the pair. (Under
+`BondEnergies.symmetric`, where `E₀₁ = E₁₀`, that is the familiar `E₀₀ + E₁₁ − 2·E₀₁`. The
+matrix is not required to be symmetric — a directional backbone need not be — and the doubled
+form reports a preference that is not there when it is not.) Every additive assignment has a sequence correlation length
 of exactly zero, uniform or not, so three energies satisfying `E₀₁ = (E₀₀+E₁₁)/2` buy nothing
 over one. **It is the non-additivity `ε` alone that makes ordering thermodynamically visible**:
 `ε > 0` favours alternation, `ε < 0` favours blocks. That is where a thermodynamic basis for

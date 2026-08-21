@@ -584,3 +584,104 @@ class TestArgumentGuards:
                              [0.0, 0.0, 0.5]])          # eigenvalues +-i and 0.5
         with pytest.raises(ValueError, match="not real"):
             _perron_and_subdominant(rotation)
+
+
+class TestReviewFindings:
+    """Each of these failed before the review that found it; kept so they cannot come back."""
+
+    # A NON-symmetric but genuinely additive assignment: e00+e11 = -5 = e01+e10, so the
+    # transfer matrix is singular and the chain has no sequence preference at all.
+    ASYMMETRIC_ADDITIVE = BondEnergies(np.array([[-2.0, -1.0], [-4.0, -3.0]]))
+
+    def test_nonadditivity_uses_BOTH_off_diagonal_entries(self):
+        """`E00 + E11 - 2*E01` is this quantity only when the matrix is symmetric.
+
+        The matrix is not required to be symmetric — a directional backbone need not be —
+        so the doubled form reported a sequence preference of -3 for a chemistry that has
+        exactly none, and disagreed with `sequence_correlation_length` on the same object.
+        """
+        be = self.ASYMMETRIC_ADDITIVE
+        assert be.e[0, 1] != be.e[1, 0]
+        assert be.nonadditivity == 0.0
+        assert sequence_correlation_length(be) == 0.0
+
+    def test_nonadditivity_and_the_correlation_length_never_disagree(self):
+        """The invariant behind the finding, over the whole family rather than one case."""
+        rng = np.random.default_rng(11)
+        for _ in range(200):
+            e = np.round(rng.uniform(-4.0, 0.0, size=(2, 2)), 6)
+            be = BondEnergies(e)
+            assert (be.nonadditivity == 0.0) == (sequence_correlation_length(be) == 0.0)
+
+    def test_the_symmetric_case_still_reduces_to_the_designs_formula(self):
+        for e00, e01, e11 in [(-2.0, -1.0, -3.0), (-1.0, -3.0, -1.0), (0.5, 0.25, -1.0)]:
+            assert BondEnergies.symmetric(e00, e01, e11).nonadditivity == pytest.approx(
+                e00 + e11 - 2 * e01)
+
+    @pytest.mark.parametrize("beta", [np.array([0.4, 0.6]), [0.0, 1.0]])
+    def test_beta_may_be_an_array_as_documented(self, beta):
+        """`not 0.0 <= beta <= 1.0` raised 'truth value of an array is ambiguous', so the
+        documented per-reaction support crashed on use."""
+        dg = np.array([-1.0, 2.0])
+        r = rate_constants(dg, barrier=10.0, beta=beta)
+        assert r.equilibrium_constant == pytest.approx(equilibrium_constant(dg))
+
+    def test_an_out_of_range_entry_in_an_array_beta_is_still_refused(self):
+        with pytest.raises(ValueError, match="reaction coordinate"):
+            rate_constants(np.array([0.0, 0.0]), barrier=10.0, beta=np.array([0.5, 1.5]))
+
+    @pytest.mark.parametrize("name", ["barrier", "beta", "prefactor", "enhancement"])
+    def test_every_per_reaction_quantity_must_agree_across_a_pair(self, name):
+        """Only `enhancement` was checked, so a per-reaction BARRIER assigned the two halves
+        of one reversible reaction different transition states — not a catalyst, but just as
+        much a free-energy source, and it measured a residual of 4.0."""
+        net = binary_polymer(max_len=4, food_len=1, p=0.01, cleavage=True,
+                             rng=np.random.default_rng(0))
+        i, _j = reversible_pairs(net)[0]
+        base = {"barrier": 8.0, "beta": 0.5, "prefactor": 1.0, "enhancement": 1.0}[name]
+        bump = {"barrier": 12.0, "beta": 0.9, "prefactor": 3.0, "enhancement": 100.0}[name]
+        arr = np.full(net.n_reactions, base)
+        arr[i] = bump
+        kw = {"barrier": 8.0, name: arr} if name != "barrier" else {"barrier": arr}
+        with pytest.raises(ValueError, match=f"{name} differs across"):
+            reaction_rate_constants(net, NONADDITIVE, **kw)
+
+    @pytest.mark.parametrize("name", ["barrier", "beta", "prefactor", "enhancement"])
+    def test_a_paired_per_reaction_quantity_is_accepted_and_stays_lawful(self, name):
+        net = binary_polymer(max_len=4, food_len=1, p=0.01, cleavage=True,
+                             rng=np.random.default_rng(0))
+        base = {"barrier": 8.0, "beta": 0.5, "prefactor": 1.0, "enhancement": 1.0}[name]
+        bump = {"barrier": 12.0, "beta": 0.9, "prefactor": 3.0, "enhancement": 100.0}[name]
+        arr = np.full(net.n_reactions, base)
+        for i, j in reversible_pairs(net)[:5]:
+            arr[i] = arr[j] = bump
+        kw = {"barrier": 8.0, name: arr} if name != "barrier" else {"barrier": arr}
+        k = reaction_rate_constants(net, NONADDITIVE, **kw)
+        assert detailed_balance_residual(net, k, NONADDITIVE) < 1e-12
+
+    @pytest.mark.parametrize("name", ["barrier", "prefactor"])
+    def test_a_per_reaction_quantity_of_the_wrong_length_is_refused(self, name):
+        net = binary_polymer(max_len=4, food_len=1, p=0.01, cleavage=True,
+                             rng=np.random.default_rng(0))
+        kw = {"barrier": 8.0, name: np.ones(3)} if name != "barrier" else {"barrier": np.ones(3)}
+        with pytest.raises(ValueError, match=f"{name} has shape"):
+            reaction_rate_constants(net, NONADDITIVE, **kw)
+
+    @pytest.mark.parametrize("n", [3, 999])
+    def test_a_misaligned_k_is_refused_rather_than_indexed(self, n):
+        """A short `k` raised a bare IndexError; one of the wrong length but long enough
+        would have returned a residual computed from the wrong reactions."""
+        net = binary_polymer(max_len=4, food_len=1, p=0.01, cleavage=True,
+                             rng=np.random.default_rng(0))
+        with pytest.raises(ValueError, match="k has shape"):
+            detailed_balance_residual(net, np.ones(n), NONADDITIVE)
+
+    def test_the_free_energy_loop_is_not_duplicated(self):
+        """`reaction_rate_constants` now takes its ΔG from `reaction_free_energies`, so the
+        junction rule has one implementation. Checked by result, not by inspection."""
+        net = binary_polymer(max_len=5, food_len=1, p=0.0, cleavage=True,
+                             rng=np.random.default_rng(4))
+        dg = reaction_free_energies(net, NONADDITIVE, dg_assoc=0.5)
+        k = reaction_rate_constants(net, NONADDITIVE, barrier=8.0, dg_assoc=0.5)
+        for i, j in reversible_pairs(net):
+            assert np.log(k[i] / k[j]) == pytest.approx(-dg[i], abs=1e-12)

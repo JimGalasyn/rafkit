@@ -37,12 +37,13 @@ whole point. `E₀₀ / E₀₁ / E₁₁` is the smallest assignment under whic
 a one-dimensional Ising chain, and its transfer matrix has a second eigenvalue that vanishes
 whenever
 
-    ε = E₀₀ + E₁₁ − 2·E₀₁  =  0
+    ε = E₀₀ + E₁₁ − E₀₁ − E₁₀  =  0
 
-— the **additive** case, where `E[a][b] = h(a) + h(b)` and the bond energy carries no
+— the **additive** case, where `E[a][b] = h(a) + g(b)` and the bond energy carries no
 information about the *pair*. Every additive assignment has zero sequence correlation length,
 uniform or not, so three energies that happen to satisfy `E₀₁ = (E₀₀+E₁₁)/2` buy nothing over
-one. It is the non-additivity `ε` alone that makes ordering thermodynamically visible:
+one. (Under `symmetric()`, where `E₀₁ = E₁₀`, `ε` is the design's `E₀₀ + E₁₁ − 2·E₀₁`; the
+matrix is not required to be symmetric, and the doubled form is wrong when it is not.) It is the non-additivity `ε` alone that makes ordering thermodynamically visible:
 `ε > 0` favours alternation (`0101…`), `ε < 0` favours blocks (`000111`), `ε = 0` leaves
 residues uncorrelated. **That is the quantity that would give templating a thermodynamic basis
 instead of an imposed rule** — see `nonadditivity` and `sequence_correlation_length`.
@@ -199,13 +200,21 @@ class BondEnergies:
 
     @property
     def nonadditivity(self) -> float:
-        """`ε = E₀₀ + E₁₁ − 2·E₀₁` — the whole of the sequence preference, in one number.
+        """`ε = E₀₀ + E₁₁ − E₀₁ − E₁₀` — the whole of the sequence preference, in one number.
 
-        When `ε = 0` the bond energy splits as `E[a][b] = h(a) + h(b)`: it says something
-        about each residue and **nothing about the pair**, the transfer matrix is singular,
-        and the sequence correlation length is exactly zero. So "uniform bond energy admits
-        no sequence preference" is true but not tight — the additive family is larger than
-        the uniform one, and every member of it is equally blind.
+        When `ε = 0` the bond energy splits as `E[a][b] = h(a) + g(b)`: it says something
+        about the left residue and something about the right one and **nothing about the
+        pair**, the transfer matrix is singular, and the sequence correlation length is
+        exactly zero. So "uniform bond energy admits no sequence preference" is true but not
+        tight — the additive family is larger than the uniform one, and every member of it is
+        equally blind.
+
+        ⚠ Written `E₀₀ + E₁₁ − 2·E₀₁` while only symmetric matrices were in view, which is
+        this expression **only when `E₀₁ = E₁₀`**. Since the matrix is not required to be
+        symmetric, that form reported a non-zero preference for genuinely additive chemistries
+        like `[[−2, −1], [−4, −3]]`, contradicting `sequence_correlation_length` on the same
+        object. The determinant of `exp(−E/RT)` vanishes iff `E₀₀ + E₁₁ = E₀₁ + E₁₀`, and that
+        is the condition, symmetric or not.
 
         `ε > 0` favours alternation, `ε < 0` favours blocks. Binary alphabets only: for a
         larger one the obstruction is a rank condition on the whole matrix, not a scalar.
@@ -213,7 +222,7 @@ class BondEnergies:
         if self.e.shape[0] != 2:
             raise ValueError("nonadditivity is defined for a binary alphabet; for "
                             f"{self.alphabet!r} the additive case is rank(exp(-e/rt)) == 1")
-        return float(self.e[0, 0] + self.e[1, 1] - 2.0 * self.e[0, 1])
+        return float(self.e[0, 0] + self.e[1, 1] - self.e[0, 1] - self.e[1, 0])
 
 
 @dataclass(frozen=True, eq=False)
@@ -277,13 +286,19 @@ def rate_constants(dg, *, barrier, prefactor: float = 1.0, beta: float = 0.5,
     """
     if rt <= 0:
         raise ValueError(f"rt must be positive, got {rt}")
-    if not 0.0 <= beta <= 1.0:
-        raise ValueError(f"beta is a position along the reaction coordinate in [0, 1], "
-                         f"got {beta}")
-    if np.any(np.asarray(prefactor, dtype=float) <= 0):
-        raise ValueError(f"prefactor must be positive, got {prefactor}")
+    # Coerced BEFORE validation, and every operand, not only the ones a scalar path happened
+    # to reach: `not 0.0 <= beta <= 1.0` raised "truth value of an array is ambiguous" on the
+    # per-reaction arrays this function documents as supported, and validating a coerced copy
+    # while computing with the original then failed a step later on a plain list.
     dg = np.asarray(dg, dtype=float)
     barrier = np.asarray(barrier, dtype=float)
+    beta = np.asarray(beta, dtype=float)
+    prefactor = np.asarray(prefactor, dtype=float)
+    if not np.all((beta >= 0.0) & (beta <= 1.0)):
+        raise ValueError(f"beta is a position along the reaction coordinate in [0, 1], "
+                         f"got {beta}")
+    if np.any(prefactor <= 0):
+        raise ValueError(f"prefactor must be positive, got {prefactor}")
     needed = np.maximum(-beta * dg, (1.0 - beta) * dg)
     if np.any(barrier < needed):
         worst = float(np.max(needed - barrier))
@@ -384,6 +399,34 @@ def reversible_pairs(net) -> tuple[tuple[int, int], ...]:
     return tuple(sorted((v[1], v[-1]) for v in seen.values() if 1 in v and -1 in v))
 
 
+def _paired(value, name: str, n_reactions: int, pairs) -> np.ndarray:
+    """A scalar, or one value per reaction that **agrees across every reversible pair**.
+
+    The two directions of a reversible reaction are one reaction with one transition state.
+    Any per-reaction quantity feeding that transition state — the barrier, where along the
+    coordinate it sits, the attempt frequency, or a catalyst's factor — must therefore take
+    the same value on both halves. Giving them different values does not make one direction
+    faster; it makes the reaction a **source of free energy**, silently and at a plausible
+    rate. Refused rather than checked afterwards by `detailed_balance_residual`, because by
+    then the rates exist and something may already have used them.
+    """
+    v = np.asarray(value, dtype=float)
+    if not v.ndim:
+        return v
+    if v.shape != (n_reactions,):
+        raise ValueError(f"{name} has shape {v.shape}, expected a scalar or one value per "
+                         f"reaction ({n_reactions},)")
+    bad = [(i, j) for i, j in pairs if not np.isclose(v[i], v[j])]
+    if bad:
+        i, j = bad[0]
+        raise ValueError(
+            f"{name} differs across {len(bad)} reversible pair(s), e.g. reactions {i} and "
+            f"{j} at {v[i]:g} and {v[j]:g}. The two directions of a reversible reaction share "
+            f"one transition state, so a per-reaction {name} must agree on both halves; "
+            "differing values make the reaction a source of free energy.")
+    return v
+
+
 def reaction_rate_constants(net, energies: BondEnergies, *, barrier,
                             prefactor: float = 1.0, beta: float = 0.5, rt: float = 1.0,
                             dg_assoc: float = 0.0, enhancement=1.0):
@@ -400,29 +443,30 @@ def reaction_rate_constants(net, energies: BondEnergies, *, barrier,
     to prevent. `binary_polymer(paired_catalysis=True)` already shares catalyst sets across
     the pair, so a mask built from those sets passes.
 
+    ⚠ The same check applies to `barrier`, `beta` and `prefactor`, and for the same reason.
+    Checking only `enhancement` left the hole open one door along: a per-reaction *barrier*
+    array assigns the two halves of a reversible reaction different transition states, which
+    is not a catalyst but is just as much a free-energy source — measured at a residual of
+    4.0 before this was closed.
+
     ⚠ The enhancement here is *static* — the value a reaction takes **when** its catalyst is
     present. Whether it is present is a property of the state, and belongs to the simulator.
     """
-    dg_lig = np.array([dg_assoc + energies.ligation(net.molecules[a], net.molecules[b])
-                       for a, b, _ab in net.reactions], dtype=float)
-    rates = rate_constants(dg_lig, barrier=barrier, prefactor=prefactor, beta=beta, rt=rt)
-    forward = np.asarray(net.directions) > 0
-    k = np.where(forward, rates.forward, rates.reverse)
+    # The ligation-orientation free energy, taken from `reaction_free_energies` and unsigned
+    # rather than recomputed, so the junction rule lives in exactly one place.
+    directions = np.asarray(net.directions)
+    forward = directions > 0
+    dg_lig = np.where(forward, 1.0, -1.0) * reaction_free_energies(net, energies,
+                                                                  dg_assoc=dg_assoc)
+    pairs = reversible_pairs(net)
+    n = len(net.reactions)
+    barrier = _paired(barrier, "barrier", n, pairs)
+    beta = _paired(beta, "beta", n, pairs)
+    prefactor = _paired(prefactor, "prefactor", n, pairs)
+    enhancement = _paired(enhancement, "enhancement", n, pairs)
 
-    enhancement = np.asarray(enhancement, dtype=float)
-    if enhancement.ndim:
-        if enhancement.shape != k.shape:
-            raise ValueError(f"enhancement has shape {enhancement.shape}, expected a scalar "
-                             f"or one value per reaction {k.shape}")
-        bad = [(i, j) for i, j in reversible_pairs(net)
-               if not np.isclose(enhancement[i], enhancement[j])]
-        if bad:
-            i, j = bad[0]
-            raise ValueError(
-                f"enhancement differs across {len(bad)} reversible pair(s), e.g. reactions "
-                f"{i} and {j} at {enhancement[i]:g} and {enhancement[j]:g}. A catalyst "
-                "changes the barrier, which both directions share; scaling one direction "
-                "alone makes the reaction a source of free energy.")
+    rates = rate_constants(dg_lig, barrier=barrier, prefactor=prefactor, beta=beta, rt=rt)
+    k = np.where(forward, rates.forward, rates.reverse)
     # Routed through `catalysed_rates` rather than multiplied here, so that the one
     # place a catalytic factor is applied stays the one place it is validated.
     return catalysed_rates(Rates(forward=k, reverse=k), enhancement).forward
@@ -448,6 +492,11 @@ def detailed_balance_residual(net, k, energies: BondEnergies, *, dg_assoc: float
             "is no detailed balance to violate. Returning 0 here would read as 'consistent'. "
             "Generate the chemistry with cleavage=True to make the check meaningful.")
     k = np.asarray(k, dtype=float)
+    if k.shape != (len(net.reactions),):
+        # Indexed by reaction, so a short `k` raised a bare IndexError and a merely
+        # MISALIGNED one returned a residual computed from the wrong reactions.
+        raise ValueError(f"k has shape {k.shape}, expected one rate constant per reaction "
+                         f"({len(net.reactions)},)")
     dg = reaction_free_energies(net, energies, dg_assoc=dg_assoc)
     worst = 0.0
     for i, j in pairs:
@@ -515,12 +564,13 @@ def _perron_and_subdominant(t: np.ndarray) -> tuple[float, float]:
         disc = np.sqrt((t[0, 0] - t[1, 1]) ** 2 + 4.0 * t[0, 1] * t[1, 0])
         return float((tr + disc) / 2.0), float(abs((tr - disc) / 2.0))
     vals = np.linalg.eigvals(t)
-    lead = vals[int(np.argmax(np.abs(vals)))]
+    top = int(np.argmax(np.abs(vals)))
+    lead = vals[top]
     if abs(lead.imag) > 1e-9 * abs(lead):
         raise ValueError(f"the dominant eigenvalue {lead} is not real, which Perron–Frobenius "
                          "forbids for a positive matrix; the bond energies are probably not "
                          "finite")
-    rest = np.delete(vals, int(np.argmax(np.abs(vals))))
+    rest = np.delete(vals, top)
     return float(lead.real), float(np.max(np.abs(rest))) if rest.size else 0.0
 
 
