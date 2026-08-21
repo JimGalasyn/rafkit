@@ -21,7 +21,7 @@ rate constants derived from bond energies instead; the default is unchanged and 
 
 ⚠ And the reduction factor was **already** an enhancement: running uncatalysed reactions at
 `1/20` is `k_uncat = 1/20` with a catalyst factor of 20, which is exactly
-`Kinetics(k_uncat=1/20, enhancement=20)` and reproduces these propensities identically. The
+`Kinetics.uniform(net.n_reactions, 1/20, 20)` and reproduces these propensities identically. The
 catalysis here was never the missing piece. The free energy was.
 
 Conventions, all inherited from the reference rather than chosen here:
@@ -94,7 +94,7 @@ def _pair_count(counts: np.ndarray, reactants: tuple[int, ...]) -> float:
 
 
 def propensities(net, counts: np.ndarray, *,
-                 uncatalysed_factor: float = UNCATALYSED_FACTOR,
+                 uncatalysed_factor: float | None = None,
                  reactions=None, kinetics=None) -> np.ndarray:
     """Propensity of every reaction under the current counts.
 
@@ -123,43 +123,64 @@ def propensities(net, counts: np.ndarray, *,
 
     ⚠ Because the pair's two directions come from one barrier and the catalyst multiplies
     both, a chemistry built this way has its **stationary point at the thermodynamic
-    equilibrium** — forward and reverse propensities balance at `n_ab/(n_a·n_b) = K`, with or
-    without the catalyst present. Under unit constants that balance point is `K = 1` for every
-    reaction, whatever the molecules are.
+    equilibrium**, with or without the catalyst present. Balance is on the **combinatorial
+    factors**, not on the raw counts::
+
+        k_f · combos_forward(n)  =  k_r · combos_reverse(n)
+
+    which for `a + b -> ab` with `a != b` is the familiar `n_ab/(n_a·n_b) = K`.
+
+    ⚠ **It is NOT that, for a self-ligation.** `a + a -> aa` takes the pair count
+    `n_a(n_a−1)/2`, so it balances at `n_aa = K·n_a(n_a−1)/2`, and the count ratio
+    `n_aa/n_a²` tends to **`K/2`**, not `K`. Measured on `0 + 0 -> 00` under unit constants
+    (`K = 1`) at `n_a = 20`: balance sits at `n_aa = 190`, not 400. The factor is the standard
+    stochastic symmetry number and `_pair_count` is right — but it means **the map from ΔG to a
+    count ratio is not uniform across the chemistry**, and a self-ligation's stationary point
+    sits about a factor of two from where the same ΔG puts a hetero-ligation. The test suite's
+    `_distinct_reactant_pair` sidesteps this deliberately; a caller reading counts off a
+    trajectory cannot.
+
+    Under unit constants the balance point is `K = 1` for every reaction, whatever the
+    molecules are — which is the thermodynamic claim `kinetics` exists to replace.
     """
     if kinetics is not None:
         if kinetics.n_reactions != net.n_reactions:
             raise ValueError(f"kinetics covers {kinetics.n_reactions} reactions, but the "
                              f"network has {net.n_reactions}")
-        if uncatalysed_factor != UNCATALYSED_FACTOR:
-            # Silently ignoring one of two conflicting rate specifications is exactly the
-            # plausible-numbers failure; the caller has to mean one of them.
+        if uncatalysed_factor is not None:
+            # A `None` sentinel rather than comparing against the live default: the old guard
+            # could not tell "caller passed 20.0" from "caller passed nothing", so an explicit
+            # 20.0 alongside `kinetics` was silently accepted -- and `simulate`'s unconditional
+            # forwarding worked only because its default happened to equal UNCATALYSED_FACTOR.
             raise ValueError("pass either `kinetics` or `uncatalysed_factor`, not both: "
                              "`kinetics` carries its own uncatalysed rate per reaction")
+    factor = UNCATALYSED_FACTOR if uncatalysed_factor is None else uncatalysed_factor
     out = np.zeros(net.n_reactions)
+    combos = np.zeros(net.n_reactions)
+    catalysed = np.zeros(net.n_reactions, dtype=bool)
     allowed = range(net.n_reactions) if reactions is None else reactions
     present = frozenset(np.flatnonzero(counts).tolist())
     inhibitors = getattr(net, "inhibitors", ())
     for r in allowed:
-        combos = _pair_count(counts, net.reactants(r))
-        if combos <= 0:
+        c = _pair_count(counts, net.reactants(r))
+        if c <= 0:
             continue
         if inhibitors and (inhibitors[r] & present):
             continue                      # inhibited: blocked outright
-        catalysed = is_catalysed(net.catalysts[r], present)
-        if kinetics is None:
-            out[r] = combos if catalysed else combos / uncatalysed_factor
-        else:
-            k = kinetics.k_uncat[r]
-            if catalysed:
-                e = kinetics.enhancement
-                k = k * (e[r] if e.ndim else e)
-            out[r] = combos * k
+        combos[r] = c
+        catalysed[r] = is_catalysed(net.catalysts[r], present)
+    if kinetics is None:
+        out = np.where(catalysed, combos, combos / factor)
+    else:
+        # `Kinetics.rates` rather than the enhancement rule re-derived here: one place a
+        # catalytic factor is applied is the module's own stated principle, and an inline
+        # copy meant the simulator never exercised the method built for it.
+        out = combos * kinetics.rates(catalysed)
     return out
 
 
 def simulate(net, *, n_events: int = 25_000, rng=None,
-             uncatalysed_factor: float = UNCATALYSED_FACTOR,
+             uncatalysed_factor: float | None = None,
              food_floor: int = FOOD_FLOOR, initial_food: int | None = None,
              sample_every: int = 25, reactions=None, kinetics=None) -> Trajectory:
     """Run the direct method for `n_events` reaction events.

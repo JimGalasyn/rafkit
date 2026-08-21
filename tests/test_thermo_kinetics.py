@@ -21,7 +21,8 @@ from rafkit.binary_polymer import binary_polymer
 from rafkit.catalysis import normalise
 from rafkit.gillespie import UNCATALYSED_FACTOR, propensities, simulate
 from rafkit.thermo import (BondEnergies, Kinetics, kinetics_from_energies,
-                           reaction_free_energies, reversible_pairs, unpaired_catalysis)
+                           reaction_free_energies, reversible_pairs,
+                           unpaired_catalysis, unpaired_inhibition)
 
 ENERGIES = BondEnergies.symmetric(-2.0, -1.0, -3.0)
 DG_ASSOC = 0.5
@@ -295,3 +296,142 @@ class TestKineticsGuards:
                                  paired_catalysis=False, rng=np.random.default_rng(seed))
             shares.append(len(unpaired_catalysis(net)) / len(reversible_pairs(net)))
         assert np.mean(shares) == pytest.approx(0.63, abs=0.03)
+
+
+class TestReviewFindingsOnTheWiring:
+    """Each failed before the review that found it. Reproductions kept as the tests."""
+
+    def test_the_documented_canonical_example_actually_runs(self):
+        """It appeared in five places and raised ValueError verbatim.
+
+        `k_uncat` is per reaction, so a bare scalar cannot say how many there are. `uniform`
+        takes the count, which makes the example runnable instead of illustrative — and the
+        five copies now quote this form.
+        """
+        net = _net()
+        kin = Kinetics.uniform(net.n_reactions, 1 / UNCATALYSED_FACTOR, UNCATALYSED_FACTOR)
+        counts = np.zeros(net.n_molecules)
+        counts[:6] = [5.0, 7.0, 3.0, 2.0, 4.0, 6.0]
+        assert propensities(net, counts, kinetics=kin) == pytest.approx(
+            propensities(net, counts), rel=1e-15)
+
+    def test_a_bare_scalar_still_refused_but_now_says_what_to_use(self):
+        with pytest.raises(ValueError, match="Kinetics.uniform"):
+            Kinetics(k_uncat=1 / 20, enhancement=20)
+
+    def test_a_SELF_ligation_does_not_balance_where_the_docstring_said(self):
+        """`a + a -> aa` takes `n_a(n_a-1)/2`, so the balance is not `n_aa/n_a^2 = K`.
+
+        The invariant was stated unconditionally. Under unit constants (`K = 1`) at `n_a = 20`,
+        balance is at `n_aa = 190`, not 400 — a factor of ~2 from where the same ΔG puts a
+        hetero-ligation. The suite's own helper sidesteps `a == b`; a caller reading counts off
+        a trajectory cannot.
+        """
+        net = _net(p=0.0)
+        i, j = next((i, j) for i, j in reversible_pairs(net)
+                    if net.reactions[i][0] == net.reactions[i][1])
+        a, _b, ab = net.reactions[i]
+        counts = np.zeros(net.n_molecules)
+        counts[a] = 20.0
+
+        counts[ab] = 20.0 * 20.0                       # what n_ab/(n_a*n_b) = K would predict
+        naive = propensities(net, counts)
+        assert naive[i] != pytest.approx(naive[j])     # ...and it is NOT balanced
+
+        counts[ab] = 20.0 * 19.0 / 2.0                 # the combinatorial factor
+        right = propensities(net, counts)
+        assert right[i] == pytest.approx(right[j])
+        assert (20.0 * 19.0 / 2.0) / 20.0 ** 2 == pytest.approx(0.475, abs=0.01)   # ~K/2
+
+    @pytest.mark.parametrize("bad", [
+        dict(k_uncat=np.array([np.inf, 1.0]), enhancement=2.0),
+        dict(k_uncat=np.ones(2), enhancement=np.array([np.inf, 1.0])),
+        dict(k_uncat=np.array([np.nan, 1.0]), enhancement=2.0),
+    ])
+    def test_a_non_finite_rate_is_refused(self, bad):
+        """`inf > 0` passes a positivity test. It then makes every sampling probability NaN
+        and the simulator raises somewhere else entirely — `BondEnergies` guards this for the
+        same reason."""
+        with pytest.raises(ValueError, match="finite"):
+            Kinetics(**bad)
+
+    def test_an_explicit_default_uncatalysed_factor_is_no_longer_silently_accepted(self):
+        """The guard compared against the live default, so it could not tell `20.0` passed
+        from nothing passed. `simulate` forwarded unconditionally and worked only by that
+        coincidence — changing the default later would have broken every kinetics run."""
+        net = _net()
+        kin = Kinetics.uniform(net.n_reactions, 1.0, 2.0)
+        for uf in (UNCATALYSED_FACTOR, 21.0):
+            with pytest.raises(ValueError, match="not both"):
+                propensities(net, np.ones(net.n_molecules), kinetics=kin,
+                             uncatalysed_factor=uf)
+
+    def test_simulate_still_forwards_correctly_under_the_new_sentinel(self):
+        net = _net(p=0.05)
+        kin = kinetics_from_energies(net, ENERGIES, barrier=8.0, enhancement=100.0,
+                                     dg_assoc=DG_ASSOC)
+        traj = simulate(net, n_events=500, kinetics=kin, rng=np.random.default_rng(1))
+        assert traj.times[-1] > 0.0
+        # and the plain path is unchanged by the sentinel
+        a = simulate(net, n_events=500, rng=np.random.default_rng(1))
+        b = simulate(net, n_events=500, rng=np.random.default_rng(1),
+                     uncatalysed_factor=UNCATALYSED_FACTOR)
+        assert np.array_equal(a.counts, b.counts)
+
+    def test_asymmetric_INHIBITION_is_refused_too(self):
+        """Inhibition is an absolute block, so an inhibitor on one direction only makes that
+        direction impossible while the other fires — `k = 0` on half a pair, residual `inf`."""
+        net = binary_polymer(max_len=4, food_len=1, p=0.01, cleavage=True, q=0.05,
+                             paired_catalysis=False, rng=np.random.default_rng(1))
+        assert unpaired_inhibition(net)
+        # with symmetric catalysts but asymmetric inhibitors, the inhibitor check must fire
+        chi = net.catalysts[:net.n_reactions // 2]
+        sym = dataclasses.replace(net, catalysts=chi + chi)
+        assert unpaired_catalysis(sym) == ()
+        assert unpaired_inhibition(sym)
+        with pytest.raises(ValueError, match="different inhibitor sets"):
+            kinetics_from_energies(sym, ENERGIES, barrier=8.0, enhancement=10.0)
+
+    def test_symmetric_inhibition_is_lawful_and_accepted(self):
+        """Blocking BOTH directions is zero flux and no violation; only asymmetry breaks it."""
+        net = binary_polymer(max_len=4, food_len=1, p=0.01, cleavage=True, q=0.05,
+                             paired_catalysis=True, rng=np.random.default_rng(1))
+        assert unpaired_inhibition(net) == ()
+        kinetics_from_energies(net, ENERGIES, barrier=8.0, enhancement=10.0)
+
+    def test_propensities_uses_Kinetics_rates_rather_than_a_second_copy(self):
+        """The enhancement rule had two implementations and only the inline one was exercised.
+
+        Checked by behaviour: monkeypatching `rates` must change what `propensities` returns.
+        """
+        net = _net(p=0.05)
+        kin = Kinetics.uniform(net.n_reactions, 1.0, 10.0)
+        counts = np.zeros(net.n_molecules)
+        counts[:6] = 5.0
+        base = propensities(net, counts, kinetics=kin)
+
+        class Doubled(Kinetics):
+            def rates(self, catalysed):
+                return 2.0 * super().rates(catalysed)
+
+        doubled = Doubled(k_uncat=kin.k_uncat, enhancement=kin.enhancement)
+        assert propensities(net, counts, kinetics=doubled) == pytest.approx(2.0 * base)
+
+    def test_reversible_pairs_is_computed_once_per_kinetics_build(self, monkeypatch):
+        """It ran three times: here, in `unpaired_catalysis`, and in `reaction_rate_constants`."""
+        import rafkit.thermo as th
+        calls = []
+        real = th.reversible_pairs
+        monkeypatch.setattr(th, "reversible_pairs",
+                            lambda net: (calls.append(1), real(net))[1])
+        net = _net(p=0.01)
+        th.kinetics_from_energies(net, ENERGIES, barrier=8.0, enhancement=10.0)
+        assert len(calls) == 1, f"reversible_pairs called {len(calls)} times"
+
+    def test_a_network_with_no_inhibitor_field_is_handled(self):
+        """`unpaired_inhibition` is duck-typed like `gillespie.propensities`: a network type
+        that never modelled inhibition has nothing to be asymmetric about."""
+        net = _net(p=0.0)
+        bare = dataclasses.replace(net, inhibitors=(frozenset(),) * net.n_reactions)
+        object.__setattr__(bare, "inhibitors", ())      # a net that simply lacks the field
+        assert unpaired_inhibition(bare) == ()

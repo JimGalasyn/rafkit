@@ -240,15 +240,23 @@ constants are, and whether a catalyst is present at any instant is state, so the
 holds a "catalysed rate constant" it could apply to one direction.
 
 ⚠ **The existing model was already in this form and did not say so.** `gillespie`'s uncatalysed
-factor of 20 *is* `Kinetics(k_uncat=1/20, enhancement=20)`, and reproduces its propensities to the
+factor of 20 *is* `Kinetics.uniform(net.n_reactions, 1/20, 20)`, and reproduces its propensities to the
 last ulp — so catalysis was never the missing piece. What was missing is the equilibrium: unit
 constants make `k_f = k_r` whether or not a catalyst is present, so `K_eq = 1` regardless.
 
 The consequence that can change a trajectory: a chemistry built this way has its **stationary point
-at the thermodynamic equilibrium.** Forward and reverse propensities balance at
-`n_ab/(n_a·n_b) = K`, and a present catalyst raises both by the enhancement **without moving that
-point**. Under unit constants the balance sits at `K = 1` for every reaction, whatever the molecules
-are.
+at the thermodynamic equilibrium.** Balance is on the *combinatorial factors* —
+`k_f · combos_forward = k_r · combos_reverse` — which for `a + b → ab` with `a ≠ b` is the familiar
+`n_ab/(n_a·n_b) = K`. A present catalyst raises both directions by the enhancement **without moving
+that point**. Under unit constants the balance sits at `K = 1` for every reaction, whatever the
+molecules are.
+
+⚠ **Not so for a self-ligation.** `a + a → aa` takes the pair count `n_a(n_a−1)/2`, so it balances at
+`n_aa = K·n_a(n_a−1)/2` and the count ratio `n_aa/n_a²` tends to **`K/2`**. Measured on `0 + 0 → 00`
+under unit constants at `n_a = 20`, balance is at `n_aa = 190`, not 400. The factor is the standard
+stochastic symmetry number and `_pair_count` is correct — but **the map from ΔG to a count ratio is
+not uniform across the chemistry**, and anyone reading equilibrium constants off a trajectory needs
+the qualification.
 
 ⚠ `binary_polymer(paired_catalysis=False)` is not a variant chemistry — it is a **thermodynamically
 impossible** one. Drawing the two directions' catalysts separately gives molecules that accelerate a

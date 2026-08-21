@@ -15,7 +15,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   path is untouched — `kinetics=None` runs the same code as before.
 
   ⚠ The existing model was **already in this form**: `gillespie`'s uncatalysed factor of 20 is
-  `Kinetics(k_uncat=1/20, enhancement=20)` and reproduces its propensities to the last ulp (they
+  `Kinetics.uniform(net.n_reactions, 1/20, 20)` and reproduces its propensities to the last ulp (they
   differ by 2.2e-16 on 16 of 136 reactions, because `1/20` is not exact in binary). So catalysis
   was never the missing piece — the *equilibrium* was. Unit constants make `k_f = k_r` whether or
   not a catalyst is present, so `K_eq = 1` regardless.
@@ -33,6 +33,24 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
   ⚠ A `kinetics` run is still **driven**: the food floor holds a chemical potential at the
   boundary, so it does not relax to the equilibrium ensemble `thermo` computes.
+
+  ⚠ Seven findings from code review, all reproduced first. (a) The canonical example quoted in
+  five places, `Kinetics(k_uncat=1/20, enhancement=20)`, **raised `ValueError`** — `k_uncat` is
+  per reaction and a bare scalar cannot say how many; added `Kinetics.uniform(n, k, e)` and
+  corrected all five. (b) The headline balance invariant `n_ab/(n_a*n_b) = K` is **false for
+  self-ligation**: `a + a -> aa` takes `n_a(n_a-1)/2`, so the count ratio tends to `K/2` — at
+  `n_a = 20` under `K = 1`, balance is at 190, not 400. The map from ΔG to a count ratio is not
+  uniform across the chemistry, and the test suite already sidestepped `a == b` without the
+  docstring saying so. (c) `Kinetics` checked positivity but not finiteness: `inf` passed, then
+  made every sampling probability NaN. (d) The mutual-exclusivity guard used the live default as
+  its own sentinel, so an explicit `uncatalysed_factor=20.0` alongside `kinetics` was silently
+  accepted and `simulate`'s forwarding worked only by that coincidence; now a `None` sentinel.
+  (e) Inhibitor pairing was unchecked — inhibition is an absolute block, so a one-sided inhibitor
+  makes one direction impossible while the other fires; added `unpaired_inhibition`. (f)
+  `propensities` re-derived the enhancement rule instead of calling `Kinetics.rates`, so the
+  method built for the simulator was never exercised by it. (g) `reversible_pairs` ran three
+  times per `kinetics_from_energies`; now once, threaded — and the test written to pin that
+  caught a fourth call site the refactor had missed.
 
 - `rafkit.thermo` — free energy for a polymer chemistry: bond energies, the rate constants
   they force, and the equilibrium ensemble they induce. **Deliberately off-theme** like
