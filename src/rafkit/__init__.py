@@ -37,7 +37,8 @@ from rafkit.network import ReactionNetwork
 from rafkit.permeation import permeable_by_length, permeation_flux
 from rafkit.pnml import to_pnml, write_pnml
 from rafkit.thermo import (RT_KCAL_PER_MOL_298K, RT_KJ_PER_MOL_298K, BondEnergies,
-                           Rates, barrier_drop_from_enhancement, catalysed_rates,
+                           Kinetics, Rates, barrier_drop_from_enhancement,
+                           catalysed_rates, kinetics_from_energies, unpaired_catalysis,
                            detailed_balance_residual, elongation_ratio,
                            enhancement_from_barrier_drop, equilibrium_constant,
                            mean_length, rate_constants, reaction_free_energies,
@@ -69,7 +70,8 @@ __all__ = [
     "enhancement_from_barrier_drop", "barrier_drop_from_enhancement",
     "reaction_free_energies", "reaction_rate_constants", "reversible_pairs",
     "detailed_balance_residual", "transfer_matrix", "elongation_ratio", "mean_length",
-    "sequence_correlation_length",
+    "sequence_correlation_length", "unpaired_catalysis",
+    "Kinetics", "kinetics_from_energies",
     "to_pnml", "write_pnml",
     "simulate", "propensities", "Trajectory",
     "max_urafs", "is_uraf", "is_uninhibited", "support", "classes_from_inhibitors",

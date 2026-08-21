@@ -12,6 +12,18 @@ because the published reference assigns no others and inventing them would make 
 reproduction unfalsifiable. The one non-unit constant is the **uncatalysed rate
 reduction factor**, which is the mechanism under test.
 
+⚠ **Unit constants are not a neutral default; they are a thermodynamic claim.** In a
+cleavage–ligation chemistry they make `k_f = k_r` for every reaction, hence `K_eq = 1` and
+`ΔG° = 0` — every polymer isoenergetic with the parts it is made of, no sequence preferred
+over any other. That is right for reproducing a reference that assigns no energies, and wrong
+for any question about *stability*. Pass `kinetics=` (see `rafkit.thermo.Kinetics`) to run on
+rate constants derived from bond energies instead; the default is unchanged and byte-identical.
+
+⚠ And the reduction factor was **already** an enhancement: running uncatalysed reactions at
+`1/20` is `k_uncat = 1/20` with a catalyst factor of 20, which is exactly
+`Kinetics(k_uncat=1/20, enhancement=20)` and reproduces these propensities identically. The
+catalysis here was never the missing piece. The free energy was.
+
 Conventions, all inherited from the reference rather than chosen here:
 
 * a reaction whose catalyst is absent still proceeds, at ``1 / uncatalysed_factor``;
@@ -83,7 +95,7 @@ def _pair_count(counts: np.ndarray, reactants: tuple[int, ...]) -> float:
 
 def propensities(net, counts: np.ndarray, *,
                  uncatalysed_factor: float = UNCATALYSED_FACTOR,
-                 reactions=None) -> np.ndarray:
+                 reactions=None, kinetics=None) -> np.ndarray:
     """Propensity of every reaction under the current counts.
 
     A reaction with at least one catalyst present runs at the full rate; one with none
@@ -101,7 +113,29 @@ def propensities(net, counts: np.ndarray, *,
     so species arrive by routes outside the set under study and the seeding sequence the
     experiment exists to observe is destroyed. An earlier version of this module did
     exactly that, and produced a molecule before the only reaction that makes it.
+
+    `kinetics` replaces the unit constants with a `rafkit.thermo.Kinetics` — per-reaction
+    uncatalysed rate constants and the factor a present catalyst applies. The **only**
+    difference in the loop is which number multiplies `combos`, which is the point: the
+    combinatorics, the inhibition block, the food floor and the seeding record are all
+    unchanged, so a run with `kinetics` differs from one without it in the rate constants and
+    in nothing else.
+
+    ⚠ Because the pair's two directions come from one barrier and the catalyst multiplies
+    both, a chemistry built this way has its **stationary point at the thermodynamic
+    equilibrium** — forward and reverse propensities balance at `n_ab/(n_a·n_b) = K`, with or
+    without the catalyst present. Under unit constants that balance point is `K = 1` for every
+    reaction, whatever the molecules are.
     """
+    if kinetics is not None:
+        if kinetics.n_reactions != net.n_reactions:
+            raise ValueError(f"kinetics covers {kinetics.n_reactions} reactions, but the "
+                             f"network has {net.n_reactions}")
+        if uncatalysed_factor != UNCATALYSED_FACTOR:
+            # Silently ignoring one of two conflicting rate specifications is exactly the
+            # plausible-numbers failure; the caller has to mean one of them.
+            raise ValueError("pass either `kinetics` or `uncatalysed_factor`, not both: "
+                             "`kinetics` carries its own uncatalysed rate per reaction")
     out = np.zeros(net.n_reactions)
     allowed = range(net.n_reactions) if reactions is None else reactions
     present = frozenset(np.flatnonzero(counts).tolist())
@@ -113,14 +147,21 @@ def propensities(net, counts: np.ndarray, *,
         if inhibitors and (inhibitors[r] & present):
             continue                      # inhibited: blocked outright
         catalysed = is_catalysed(net.catalysts[r], present)
-        out[r] = combos if catalysed else combos / uncatalysed_factor
+        if kinetics is None:
+            out[r] = combos if catalysed else combos / uncatalysed_factor
+        else:
+            k = kinetics.k_uncat[r]
+            if catalysed:
+                e = kinetics.enhancement
+                k = k * (e[r] if e.ndim else e)
+            out[r] = combos * k
     return out
 
 
 def simulate(net, *, n_events: int = 25_000, rng=None,
              uncatalysed_factor: float = UNCATALYSED_FACTOR,
              food_floor: int = FOOD_FLOOR, initial_food: int | None = None,
-             sample_every: int = 25, reactions=None) -> Trajectory:
+             sample_every: int = 25, reactions=None, kinetics=None) -> Trajectory:
     """Run the direct method for `n_events` reaction events.
 
     Starts from food only, which is the point: everything else has to be made, and the
@@ -130,6 +171,14 @@ def simulate(net, *, n_events: int = 25_000, rng=None,
     `reactions` restricts the reaction set -- pass a maximal RAF to reproduce the
     published experiment; see `propensities` for why the default of "everything" is
     the wrong choice for that purpose.
+
+    `kinetics` runs the same simulation on rate constants derived from bond energies rather
+    than on unit constants. ⚠ The **food floor still applies**, and it is a boundary condition
+    rather than a thermodynamic one: replenishing food to a fixed count holds a chemical
+    potential at the boundary, so the run is a driven system and not a closed one relaxing to
+    equilibrium. That is the intended physics, but it means a `kinetics` run does *not*
+    converge on the equilibrium ensemble `rafkit.thermo` computes, and comparing the two
+    directly would be comparing a driven steady state to an equilibrium.
     """
     rng = rng if rng is not None else np.random.default_rng()
     counts = np.zeros(net.n_molecules, dtype=np.int64)
@@ -144,7 +193,7 @@ def simulate(net, *, n_events: int = 25_000, rng=None,
 
     for step in range(n_events):
         a = propensities(net, counts, uncatalysed_factor=uncatalysed_factor,
-                         reactions=reactions)
+                         reactions=reactions, kinetics=kinetics)
         a0 = a.sum()
         if a0 <= 0:
             break                                   # nothing can fire; state is dead

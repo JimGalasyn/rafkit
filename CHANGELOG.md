@@ -7,6 +7,33 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`rafkit.thermo` reaches the simulator.** `Kinetics` (per-reaction *uncatalysed* rate
+  constants plus the factor a **present** catalyst applies), `kinetics_from_energies`, and
+  `propensities(..., kinetics=...)` / `simulate(..., kinetics=...)`. The split keeps the
+  enhancement a ratio: `thermo` says what the rate constants are, presence is state, and the
+  simulator never holds a catalysed rate constant it could apply to one direction. The default
+  path is untouched — `kinetics=None` runs the same code as before.
+
+  ⚠ The existing model was **already in this form**: `gillespie`'s uncatalysed factor of 20 is
+  `Kinetics(k_uncat=1/20, enhancement=20)` and reproduces its propensities to the last ulp (they
+  differ by 2.2e-16 on 16 of 136 reactions, because `1/20` is not exact in binary). So catalysis
+  was never the missing piece — the *equilibrium* was. Unit constants make `k_f = k_r` whether or
+  not a catalyst is present, so `K_eq = 1` regardless.
+
+  What changes a trajectory: a chemistry built from bond energies has its **stationary point at
+  the thermodynamic equilibrium**, and a present catalyst raises both directions by the
+  enhancement without moving it.
+
+  ⚠ New: `unpaired_catalysis`. `binary_polymer(paired_catalysis=False)` is not a variant
+  chemistry but a **thermodynamically impossible** one — a molecule catalysing a ligation but not
+  its cleavage is a free-energy source whenever it is present, measured at 100x net flux from
+  nothing on a hand-built case. `kinetics_from_energies` refuses such a network, because lawful
+  rate constants on an unlawful catalysis assignment are still unlawful and the rates alone
+  cannot see it.
+
+  ⚠ A `kinetics` run is still **driven**: the food floor holds a chemical potential at the
+  boundary, so it does not relax to the equilibrium ensemble `thermo` computes.
+
 - `rafkit.thermo` — free energy for a polymer chemistry: bond energies, the rate constants
   they force, and the equilibrium ensemble they induce. **Deliberately off-theme** like
   `dilution` and `permeation`, and here because the rest of the library already has an

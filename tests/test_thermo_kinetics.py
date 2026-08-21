@@ -1,0 +1,267 @@
+"""Rate constants reaching the simulator — the seam between `thermo` and `gillespie`.
+
+`thermo` says what the rate constants are; whether a catalyst is present at any instant is a
+property of the state and belongs to `gillespie`. These tests are about the join, and two of
+them are the reason it was worth building:
+
+* the model's existing uncatalysed factor of 20 **is already** `Kinetics(1/20, 20)`, and
+  reproduces its propensities identically — so catalysis was never the missing piece;
+* a chemistry built from bond energies has its **stationary point at the thermodynamic
+  equilibrium**, with or without a catalyst present, which is the whole claim of the module
+  arriving where it can affect a trajectory.
+"""
+from __future__ import annotations
+
+import dataclasses
+
+import numpy as np
+import pytest
+
+from rafkit.binary_polymer import binary_polymer
+from rafkit.catalysis import normalise
+from rafkit.gillespie import UNCATALYSED_FACTOR, propensities, simulate
+from rafkit.thermo import (BondEnergies, Kinetics, kinetics_from_energies,
+                           reaction_free_energies, reversible_pairs, unpaired_catalysis)
+
+ENERGIES = BondEnergies.symmetric(-2.0, -1.0, -3.0)
+DG_ASSOC = 0.5
+
+
+def _net(p=0.01, seed=0, paired=True, max_len=4):
+    return binary_polymer(max_len=max_len, food_len=1, p=p, cleavage=True,
+                          paired_catalysis=paired, rng=np.random.default_rng(seed))
+
+
+def _distinct_reactant_pair(net):
+    """A reversible pair whose ligation joins two DIFFERENT molecules.
+
+    `a + a -> aa` takes the combinatorial factor `n(n-1)/2` rather than `n**2`, which shifts
+    the balance point by a factor that has nothing to do with free energy. Picking `a != b`
+    keeps the equilibrium test about thermodynamics.
+    """
+    for i, j in reversible_pairs(net):
+        a, b, _ab = net.reactions[i]
+        if a != b:
+            return i, j
+    raise AssertionError("no pair with distinct reactants")
+
+
+class TestTheModelWasAlreadyInThisForm:
+    """The uncatalysed factor of 20 is an enhancement of 20, and always was."""
+
+    def test_kinetics_reproduces_the_default_propensities_TO_THE_LAST_ULP(self):
+        """Not bit-identical, and the reason is worth one line rather than a loose tolerance.
+
+        The default computes `combos / 20`; the `Kinetics` form computes
+        `combos * (1/20) * 20`, and `1/20` is not exact in binary. The two differ by at most
+        one ulp — measured, 2.2e-16 on 16 of 136 reactions — which is arithmetic, not a
+        difference in the model. Asserting `rel=0` would be asserting something false about
+        floating point.
+        """
+        net = _net()
+        counts = np.zeros(net.n_molecules)
+        counts[:6] = [5.0, 7.0, 3.0, 2.0, 4.0, 6.0]
+        default = propensities(net, counts)
+        k = Kinetics(k_uncat=np.full(net.n_reactions, 1.0 / UNCATALYSED_FACTOR),
+                     enhancement=UNCATALYSED_FACTOR)
+        got = propensities(net, counts, kinetics=k)
+        assert got == pytest.approx(default, rel=1e-15)
+        assert np.max(np.abs(got - default)) < 1e-15
+
+    def test_and_so_the_default_asserts_K_eq_1_for_every_reaction(self):
+        """Unit constants both ways is `ΔG = 0`, whatever the molecules are.
+
+        Stated at the propensity level rather than the rate-constant level: the forward and
+        reverse propensities balance at `n_ab = n_a*n_b` for EVERY pair, with no reference to
+        any bond energy.
+        """
+        net = _net(p=0.0)
+        i, j = _distinct_reactant_pair(net)
+        a, b, ab = net.reactions[i]
+        counts = np.zeros(net.n_molecules)
+        counts[a], counts[b] = 3.0, 5.0
+        counts[ab] = 3.0 * 5.0                       # K = 1
+        p = propensities(net, counts)
+        assert p[i] == pytest.approx(p[j])
+
+
+class TestTheStationaryPointIsTheEquilibrium:
+    """The claim that makes any of this worth wiring up."""
+
+    def test_forward_and_reverse_balance_at_the_mass_action_equilibrium(self):
+        net = _net(p=0.0)
+        i, j = _distinct_reactant_pair(net)
+        a, b, ab = net.reactions[i]
+        kin = kinetics_from_energies(net, ENERGIES, barrier=8.0, enhancement=1.0,
+                                     dg_assoc=DG_ASSOC)
+        dg = reaction_free_energies(net, ENERGIES, dg_assoc=DG_ASSOC)[i]
+        keq = float(np.exp(-dg))                     # rt = 1
+        counts = np.zeros(net.n_molecules)
+        counts[a], counts[b] = 2.0, 3.0
+        counts[ab] = keq * 2.0 * 3.0
+        p = propensities(net, counts, kinetics=kin)
+        assert p[i] == pytest.approx(p[j], rel=1e-12)
+
+    def test_the_balance_point_is_NOT_where_unit_constants_put_it(self):
+        """Otherwise the previous test would pass for a chemistry with no free energy in it."""
+        net = _net(p=0.0)
+        i, j = _distinct_reactant_pair(net)
+        a, b, ab = net.reactions[i]
+        dg = reaction_free_energies(net, ENERGIES, dg_assoc=DG_ASSOC)[i]
+        assert dg != 0.0
+        counts = np.zeros(net.n_molecules)
+        counts[a], counts[b] = 2.0, 3.0
+        counts[ab] = float(np.exp(-dg)) * 2.0 * 3.0
+        unit = propensities(net, counts)
+        assert unit[i] != pytest.approx(unit[j])
+
+    def test_a_present_catalyst_does_not_move_the_balance_point(self):
+        """The headline, at the level where it could change a trajectory.
+
+        The catalyst multiplies both directions because they share a barrier, and under
+        `paired_catalysis` it is present for both entries at once. So the same counts balance
+        catalysed and uncatalysed — while both propensities rise by the enhancement.
+        """
+        net = _net(p=0.0)
+        i, j = _distinct_reactant_pair(net)
+        a, b, ab = net.reactions[i]
+        catalyst = next(m for m in range(net.n_molecules) if m not in (a, b, ab))
+        chi = list(net.catalysts)
+        chi[i] = chi[j] = normalise([catalyst])
+        net = dataclasses.replace(net, catalysts=tuple(chi))
+
+        kin = kinetics_from_energies(net, ENERGIES, barrier=8.0, enhancement=100.0,
+                                     dg_assoc=DG_ASSOC)
+        dg = reaction_free_energies(net, ENERGIES, dg_assoc=DG_ASSOC)[i]
+        counts = np.zeros(net.n_molecules)
+        counts[a], counts[b] = 2.0, 3.0
+        counts[ab] = float(np.exp(-dg)) * 2.0 * 3.0
+
+        without = propensities(net, counts, kinetics=kin)
+        counts[catalyst] = 1.0
+        with_cat = propensities(net, counts, kinetics=kin)
+
+        assert with_cat[i] == pytest.approx(with_cat[j], rel=1e-12)     # still balanced
+        assert with_cat[i] == pytest.approx(without[i] * 100.0)         # and both 100x faster
+        assert with_cat[j] == pytest.approx(without[j] * 100.0)
+
+
+class TestUnpairedCatalysisIsThermodynamicallyImpossible:
+    """`paired_catalysis=False` is not a variant chemistry; it is an impossible one."""
+
+    def test_the_default_chemistry_is_paired(self):
+        assert unpaired_catalysis(_net(p=0.05, paired=True)) == ()
+
+    def test_drawing_the_directions_separately_is_not(self):
+        net = _net(p=0.05, paired=False)
+        offenders = unpaired_catalysis(net)
+        assert offenders
+        i, j = offenders[0]
+        assert net.catalysts[i] != net.catalysts[j]
+
+    def test_kinetics_refuses_it_rather_than_producing_plausible_rates(self):
+        with pytest.raises(ValueError, match="different catalyst sets"):
+            kinetics_from_energies(_net(p=0.05, paired=False), ENERGIES, barrier=8.0,
+                                   enhancement=100.0)
+
+    def test_a_catalyst_on_one_direction_only_really_does_unbalance_it(self):
+        """Why the refusal is not pedantry: the free-energy source, measured.
+
+        Built by hand so the offending catalyst is the only difference — one molecule that
+        accelerates the ligation and not the cleavage. At the equilibrium counts, the
+        propensities no longer balance.
+        """
+        net = _net(p=0.0)
+        i, j = _distinct_reactant_pair(net)
+        a, b, ab = net.reactions[i]
+        catalyst = next(m for m in range(net.n_molecules) if m not in (a, b, ab))
+        chi = list(net.catalysts)
+        chi[i] = normalise([catalyst])                       # ligation half ONLY
+        lopsided = dataclasses.replace(net, catalysts=tuple(chi))
+        assert unpaired_catalysis(lopsided)
+
+        kin = kinetics_from_energies(net, ENERGIES, barrier=8.0, enhancement=100.0,
+                                     dg_assoc=DG_ASSOC)      # lawful rates...
+        dg = reaction_free_energies(net, ENERGIES, dg_assoc=DG_ASSOC)[i]
+        counts = np.zeros(net.n_molecules)
+        counts[a], counts[b] = 2.0, 3.0
+        counts[ab] = float(np.exp(-dg)) * 2.0 * 3.0
+        counts[catalyst] = 1.0
+        p = propensities(lopsided, counts, kinetics=kin)      # ...on an unlawful chemistry
+        assert p[i] == pytest.approx(p[j] * 100.0)            # 100x net flux, from nothing
+
+
+class TestTheSimulatorStillWorks:
+    """Everything except the rate constants must be untouched."""
+
+    def test_a_run_with_kinetics_produces_a_trajectory(self):
+        net = _net(p=0.05, max_len=4)
+        kin = kinetics_from_energies(net, ENERGIES, barrier=8.0, enhancement=100.0,
+                                     dg_assoc=DG_ASSOC)
+        traj = simulate(net, n_events=2_000, kinetics=kin,
+                        rng=np.random.default_rng(7))
+        assert traj.counts.shape[1] == net.n_molecules
+        assert traj.times[-1] > 0.0
+        assert traj.first_appearance                       # something got made
+
+    def test_only_the_rate_constants_differ_from_a_default_run(self):
+        """A `Kinetics` equal to the default reproduces a whole TRAJECTORY, not just one
+        propensity vector — so the combinatorics, inhibition, food floor and seeding record
+        are all provably untouched."""
+        net = _net(p=0.05, max_len=4)
+        kin = Kinetics(k_uncat=np.full(net.n_reactions, 1.0 / UNCATALYSED_FACTOR),
+                       enhancement=UNCATALYSED_FACTOR)
+        a = simulate(net, n_events=1_500, rng=np.random.default_rng(3))
+        b = simulate(net, n_events=1_500, rng=np.random.default_rng(3), kinetics=kin)
+        assert np.array_equal(a.counts, b.counts)   # identical event sequence despite the ulp
+        assert a.first_fired == b.first_fired
+        assert a.first_uncatalysed == b.first_uncatalysed
+        # ⚠ Times are NOT expected to match: rescaling every rate constant by 1/20 and
+        # every catalysed one back up leaves the ordering identical but the clock is set by
+        # the total propensity, which the two forms reach by different arithmetic.
+        assert a.times.shape == b.times.shape
+
+    def test_passing_both_rate_specifications_is_refused(self):
+        net = _net()
+        kin = Kinetics(k_uncat=np.ones(net.n_reactions), enhancement=2.0)
+        with pytest.raises(ValueError, match="not both"):
+            propensities(net, np.ones(net.n_molecules), kinetics=kin,
+                         uncatalysed_factor=50.0)
+
+    def test_kinetics_of_the_wrong_size_is_refused(self):
+        net = _net()
+        with pytest.raises(ValueError, match="covers 3 reactions"):
+            propensities(net, np.ones(net.n_molecules),
+                         kinetics=Kinetics(k_uncat=np.ones(3), enhancement=2.0))
+
+
+class TestKineticsGuards:
+
+    def test_a_zero_uncatalysed_rate_is_refused_as_enablement(self):
+        with pytest.raises(ValueError, match="enablement"):
+            Kinetics(k_uncat=np.array([1.0, 0.0]), enhancement=2.0)
+
+    def test_a_non_positive_enhancement_is_refused(self):
+        with pytest.raises(ValueError, match="enhancement must be positive"):
+            Kinetics(k_uncat=np.ones(2), enhancement=0.0)
+
+    def test_k_uncat_must_be_one_dimensional(self):
+        with pytest.raises(ValueError, match="one value per reaction"):
+            Kinetics(k_uncat=np.ones((2, 2)), enhancement=1.0)
+
+    def test_a_per_reaction_enhancement_must_match_k_uncat(self):
+        with pytest.raises(ValueError, match="enhancement has shape"):
+            Kinetics(k_uncat=np.ones(4), enhancement=np.ones(3))
+
+    def test_rates_applies_the_enhancement_only_where_catalysed(self):
+        kin = Kinetics(k_uncat=np.array([1.0, 2.0]), enhancement=10.0)
+        assert kin.rates([True, False]) == pytest.approx([10.0, 2.0])
+        assert kin.n_reactions == 2
+
+    def test_rates_refuses_a_mask_of_the_wrong_length(self):
+        with pytest.raises(ValueError, match="catalysed has shape"):
+            Kinetics(k_uncat=np.ones(2), enhancement=1.0).rates([True])
+
+    def test_the_enhancement_may_be_per_reaction(self):
+        kin = Kinetics(k_uncat=np.ones(2), enhancement=np.array([10.0, 100.0]))
+        assert kin.rates([True, True]) == pytest.approx([10.0, 100.0])
