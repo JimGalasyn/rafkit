@@ -7,6 +7,43 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `rafkit.thermo` — free energy for a polymer chemistry: bond energies, the rate constants
+  they force, and the equilibrium ensemble they induce. **Deliberately off-theme** like
+  `dilution` and `permeation`, and here because the rest of the library already has an
+  *implicit* thermodynamics and it is the wrong one. `gillespie` gives every reaction a unit
+  rate constant, so in a cleavage–ligation chemistry `k_f = k_r`, `K_eq = 1` and `ΔG° = 0`:
+  every polymer is asserted isoenergetic with its parts. Measured, that scores a
+  `detailed_balance_residual` of 2.5 against bond energies of −1 to −3 with an association
+  cost of 0.5, where rates built from those energies score 2e-16.
+
+  Catalysis becomes a **ratio applied to both directions**, which is the only form that
+  leaves `K_eq` alone. Enablement (`k_uncat = 0`) scores `inf` — a catalyst that decides
+  whether a reaction exists also moves its equilibrium, from unreachable to reachable, and
+  no catalyst does that. Detailed balance is structural, not imposed: the barrier is split
+  in the Brønsted way, so `k_f/k_r = exp(-ΔG/RT)` identically for every barrier and every
+  `beta`, and `k_uncat` becomes a consequence of the barrier rather than a switch.
+
+  Sharpens the design premise it was built from. "A uniform bond energy admits no sequence
+  preference" is true but not tight: the ensemble is a 1-D Ising chain, and its second
+  transfer eigenvalue vanishes for **every additive** assignment `E01 = (E00+E11)/2`, not
+  only the uniform one. So `nonadditivity` `ε = E00 + E11 - 2·E01` is the whole of the
+  sequence preference in one number — `ε > 0` alternating, `ε < 0` blocky, `ε = 0` blind —
+  and three energies chosen additively buy nothing over one.
+
+  ⚠ Calibration tier is **algebraic**: identities that hold or do not, reproducing no
+  experiment and calibrating against no published number. It says the model is consistent,
+  not that it is right.
+
+  ⚠ Two corrections found while testing, both recorded because the null case hid them. (i)
+  An additive assignment returns a sequence correlation length of 0.027 bonds rather than 0
+  — roundoff in `exp` reported as sequence memory — so subdominant eigenvalues below 1e-12
+  of the leading one are read as zero, and the 2×2 case is taken in closed form where
+  `λ₂ = 0` is exact. (ii) The geometric length distribution starts at the first **bond**,
+  not the first molecule: a monomer has no bonds, so the step from length 1 to 2 is a
+  boundary term. A uniform assignment happens to satisfy it anyway, which is exactly why it
+  went unnoticed; on an additive-but-not-uniform assignment at `ρ = 0.4` the first step is
+  0.377 and `mean_length` overstates the number-average by 1.4%.
+
 - `rafkit.permeation` — size-selective transport across a compartment membrane, following
   Hordijk, Naylor, Krasnogor & Fellermann (*Life* 8(3), 33, 2018). **Deliberately off-theme**
   like `dilution`: it takes no `ReactionNetwork`. It is here because "permeation is
