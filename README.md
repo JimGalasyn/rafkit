@@ -221,6 +221,13 @@ this — its first step happens to equal `ρ` — so the null case is the one ca
 is invisible. On an additive-but-not-uniform assignment at `ρ = 0.4` the first step is 0.377 and
 `mean_length` overstates the true number-average by 1.4%.
 
+⚠ And a third, found only because the binary case is the easy one: **Perron–Frobenius
+constrains the leading eigenvalue and nothing else.** A positive matrix of size 3 or more may
+have complex subdominant eigenvalues — a randomly drawn 4×4 bond-energy matrix does on the
+first try — so rejecting them as impossible refused an ordinary nucleotide chemistry. They are
+legitimate: a complex pair is a correlation that *oscillates* as it decays, and the decay
+length is set by the modulus either way.
+
 ⚠ Calibration tier: **algebraic**, not empirical. Everything above is an identity that holds or
 does not, so it sits beside `dilution` rather than beside the figure reproductions — but it
 reproduces no experiment and calibrates against no published number. It says the model is

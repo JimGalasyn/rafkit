@@ -19,6 +19,7 @@ import pytest
 
 from rafkit.binary_polymer import binary_polymer
 from rafkit.thermo import (RT_KJ_PER_MOL_298K, BondEnergies, Rates,
+                           _perron_and_subdominant,
                            barrier_drop_from_enhancement, catalysed_rates,
                            detailed_balance_residual, elongation_ratio,
                            enhancement_from_barrier_drop, equilibrium_constant,
@@ -483,3 +484,103 @@ class TestGuards:
         array comparison and raise instead of answering."""
         assert BondEnergies.uniform(-1.0) != BondEnergies.uniform(-1.0)
         assert UNIFORM == UNIFORM
+
+
+class TestBeyondABinaryAlphabet:
+    """Perron–Frobenius constrains the LEADING eigenvalue and nothing else."""
+
+    # Drawn at random and then pinned: this is the first 4x4 the search produced, and its
+    # transfer matrix has eigenvalues 28.67, 7.18 and the complex pair -3.75 +- 1.43i.
+    COMPLEX_SUB = BondEnergies(
+        np.array([[-2.743, -2.290, -0.596, -1.254],
+                  [-2.718, -1.701, -1.563, -2.521],
+                  [-0.796, -2.659, -1.826, -1.450],
+                  [-1.708, -1.240, -0.786, -0.131]]), alphabet="ACGT")
+
+    def test_a_positive_matrix_really_can_have_complex_subdominant_eigenvalues(self):
+        """The premise. Rejecting these as impossible refused an ordinary chemistry."""
+        vals = np.linalg.eigvals(transfer_matrix(self.COMPLEX_SUB))
+        assert np.max(np.abs(vals.imag)) > 1.0
+        lead = vals[int(np.argmax(np.abs(vals)))]
+        assert abs(lead.imag) < 1e-12 and lead.real > 0      # ...but the Perron root is real
+
+    def test_the_correlation_length_uses_the_MODULUS_and_does_not_raise(self):
+        xi = sequence_correlation_length(self.COMPLEX_SUB)
+        vals = np.linalg.eigvals(transfer_matrix(self.COMPLEX_SUB))
+        order = np.sort(np.abs(vals))[::-1]
+        assert xi == pytest.approx(1.0 / np.log(order[0] / order[1]))
+
+    def test_elongation_ratio_is_the_perron_root(self):
+        vals = np.linalg.eigvals(transfer_matrix(self.COMPLEX_SUB))
+        assert elongation_ratio(self.COMPLEX_SUB) == pytest.approx(
+            float(np.max(np.abs(vals))))
+
+    def test_a_uniform_four_letter_chemistry_still_has_zero_correlation(self):
+        dna = BondEnergies(np.full((4, 4), -1.0), alphabet="ACGT")
+        assert sequence_correlation_length(dna) == 0.0
+        assert elongation_ratio(dna, monomer=0.1) == pytest.approx(4 * 0.1 * np.exp(1.0))
+
+
+class TestArgumentGuards:
+    """Every rejection reachable by a plausible call, exercised once."""
+
+    @pytest.mark.parametrize("call", [
+        lambda rt: equilibrium_constant(0.0, rt=rt),
+        lambda rt: rate_constants(0.0, barrier=1.0, rt=rt),
+        lambda rt: enhancement_from_barrier_drop(1.0, rt=rt),
+        lambda rt: barrier_drop_from_enhancement(2.0, rt=rt),
+        lambda rt: transfer_matrix(UNIFORM, rt=rt),
+    ])
+    @pytest.mark.parametrize("rt", [0.0, -1.0])
+    def test_a_non_positive_rt_is_refused_everywhere(self, call, rt):
+        """RT is a temperature. Zero would divide, negative would invert every preference."""
+        with pytest.raises(ValueError, match="rt must be positive"):
+            call(rt)
+
+    @pytest.mark.parametrize("beta", [-0.1, 1.5])
+    def test_beta_outside_the_reaction_coordinate_is_refused(self, beta):
+        with pytest.raises(ValueError, match="reaction coordinate"):
+            rate_constants(0.0, barrier=1.0, beta=beta)
+
+    def test_a_non_positive_prefactor_is_refused(self):
+        with pytest.raises(ValueError, match="prefactor must be positive"):
+            rate_constants(0.0, barrier=1.0, prefactor=0.0)
+
+    def test_a_non_positive_enhancement_is_refused_by_the_converter_too(self):
+        with pytest.raises(ValueError, match="enhancement must be positive"):
+            barrier_drop_from_enhancement(-1.0)
+
+    def test_a_non_positive_monomer_concentration_is_refused(self):
+        with pytest.raises(ValueError, match="monomer concentrations must be positive"):
+            transfer_matrix(UNIFORM, monomer=0.0)
+
+    def test_an_enhancement_of_the_wrong_length_is_refused(self):
+        """Not silently broadcast: a length mismatch here is a mis-built catalysis mask."""
+        net = binary_polymer(max_len=4, food_len=1, p=0.01, cleavage=True,
+                             rng=np.random.default_rng(0))
+        with pytest.raises(ValueError, match="one value per reaction"):
+            reaction_rate_constants(net, NONADDITIVE, barrier=6.0,
+                                    enhancement=np.ones(3))
+
+    def test_residues_may_be_given_as_indices(self):
+        """`bond(0, 1)` and `bond('0', '1')` are the same bond; an integer is not a name."""
+        assert NONADDITIVE.bond(0, 1) == NONADDITIVE.bond("0", "1")
+        assert NONADDITIVE.bond(1, 1) == pytest.approx(-3.0)
+
+    def test_a_residue_index_outside_the_alphabet_is_refused(self):
+        with pytest.raises(ValueError, match="outside alphabet"):
+            NONADDITIVE.bond(0, 7)
+
+    def test_a_non_positive_matrix_is_caught_rather_than_silently_reduced(self):
+        """The internal invariant, stated on the only input that can break it.
+
+        `transfer_matrix` cannot build this — every entry it produces is a positive
+        exponential — so the guard is about a caller reaching past it. Given a matrix whose
+        DOMINANT eigenvalue is a complex pair, taking a modulus and calling it an eigenvalue
+        would return a correlation length for a chain that has no Perron root at all.
+        """
+        rotation = np.array([[0.0, -1.0, 0.0],
+                             [1.0, 0.0, 0.0],
+                             [0.0, 0.0, 0.5]])          # eigenvalues +-i and 0.5
+        with pytest.raises(ValueError, match="not real"):
+            _perron_and_subdominant(rotation)

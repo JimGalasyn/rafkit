@@ -494,24 +494,34 @@ def transfer_matrix(energies: BondEnergies, *, rt: float = 1.0, monomer=1.0,
 _EIGENVALUE_FLOOR = 1e-12
 
 
-def _eigenvalues(t: np.ndarray) -> np.ndarray:
-    """Eigenvalues of a strictly positive matrix, largest first, guaranteed real.
+def _perron_and_subdominant(t: np.ndarray) -> tuple[float, float]:
+    """The Perron root of a strictly positive matrix, and the largest **modulus** below it.
 
-    Perron–Frobenius gives a real positive leading eigenvalue. The 2×2 case is taken in
-    closed form rather than through `eigvals`, because the discriminant written as
-    `(t₀₀−t₁₁)² + 4·t₀₁·t₁₀` is manifestly non-negative and gives `λ₂ = 0` **exactly** for a
-    uniform matrix, where a general eigensolver returns roundoff. Larger alphabets fall back
-    to `eigvals` and rely on `_EIGENVALUE_FLOOR` instead.
+    Perron–Frobenius gives a real positive leading eigenvalue, strictly dominant in modulus.
+    ⚠ It says nothing about the rest: **a positive matrix of size 3 or more may have complex
+    subdominant eigenvalues**, and a randomly drawn 4×4 bond-energy matrix does so on the
+    first try. An earlier version rejected those as impossible and refused a perfectly
+    ordinary nucleotide chemistry. They are legitimate — a complex conjugate pair means the
+    sequence correlation *oscillates* as it decays — and the decay length is set by the
+    modulus either way, which is what this returns.
+
+    The 2×2 case is taken in closed form rather than through `eigvals`, because the
+    discriminant written as `(t₀₀−t₁₁)² + 4·t₀₁·t₁₀` is manifestly non-negative and gives
+    `λ₂ = 0` **exactly** for a uniform matrix, where a general eigensolver returns roundoff.
+    Larger alphabets rely on `_EIGENVALUE_FLOOR` instead.
     """
     if t.shape == (2, 2):
         tr = t[0, 0] + t[1, 1]
         disc = np.sqrt((t[0, 0] - t[1, 1]) ** 2 + 4.0 * t[0, 1] * t[1, 0])
-        return np.array([(tr + disc) / 2.0, (tr - disc) / 2.0])
+        return float((tr + disc) / 2.0), float(abs((tr - disc) / 2.0))
     vals = np.linalg.eigvals(t)
-    if np.max(np.abs(vals.imag)) > 1e-12 * max(1.0, float(np.max(np.abs(vals)))):
-        raise ValueError(f"transfer matrix has complex eigenvalues {vals}, which a positive "
-                         "matrix cannot; the bond energies are probably not finite")
-    return np.sort(vals.real)[::-1]
+    lead = vals[int(np.argmax(np.abs(vals)))]
+    if abs(lead.imag) > 1e-9 * abs(lead):
+        raise ValueError(f"the dominant eigenvalue {lead} is not real, which Perron–Frobenius "
+                         "forbids for a positive matrix; the bond energies are probably not "
+                         "finite")
+    rest = np.delete(vals, int(np.argmax(np.abs(vals))))
+    return float(lead.real), float(np.max(np.abs(rest))) if rest.size else 0.0
 
 
 def elongation_ratio(energies: BondEnergies, *, monomer=1.0, dg_assoc: float = 0.0,
@@ -529,8 +539,8 @@ def elongation_ratio(energies: BondEnergies, *, monomer=1.0, dg_assoc: float = 0
     and nowhere else in the ensemble: both scale `T` uniformly, so they move `ρ` but leave
     `sequence_correlation_length` alone.
     """
-    return float(_eigenvalues(transfer_matrix(energies, rt=rt, monomer=monomer,
-                                              dg_assoc=dg_assoc))[0])
+    return _perron_and_subdominant(transfer_matrix(energies, rt=rt, monomer=monomer,
+                                                  dg_assoc=dg_assoc))[0]
 
 
 def mean_length(energies: BondEnergies, *, monomer=1.0, dg_assoc: float = 0.0,
@@ -570,7 +580,9 @@ def sequence_correlation_length(energies: BondEnergies, *, rt: float = 1.0, mono
 
     The sign of `λ₂` — carried by `nonadditivity` — says which kind: `ε > 0` gives `λ₂ < 0`
     and alternating chains, `ε < 0` gives `λ₂ > 0` and blocky ones. This function returns the
-    length either way; read `nonadditivity` for the type.
+    length either way; read `nonadditivity` for the type. ⚠ Beyond a binary alphabet the
+    subdominant eigenvalue may be a complex pair, meaning a correlation that oscillates as it
+    decays; the length returned is then the decay envelope alone.
 
     ⚠ Unaffected by `monomer` and `dg_assoc` when the monomer supply is even, since both
     scale the matrix and cancel from the ratio. They are arguments only so that an uneven
@@ -581,10 +593,8 @@ def sequence_correlation_length(energies: BondEnergies, *, rt: float = 1.0, mono
     `exp` reported as sequence memory. `nonadditivity` is the exact test, since it is
     computed from the energies themselves and never passes through an exponential.
     """
-    vals = _eigenvalues(transfer_matrix(energies, rt=rt, monomer=monomer,
-                                        dg_assoc=dg_assoc))
-    lead = abs(vals[0])
-    sub = float(np.max(np.abs(vals[1:]))) if vals.size > 1 else 0.0
-    if sub <= _EIGENVALUE_FLOOR * lead:
+    lead, sub = _perron_and_subdominant(transfer_matrix(energies, rt=rt, monomer=monomer,
+                                                       dg_assoc=dg_assoc))
+    if sub <= _EIGENVALUE_FLOOR * abs(lead):
         return 0.0
-    return float(1.0 / np.log(lead / sub))
+    return float(1.0 / np.log(abs(lead) / sub))

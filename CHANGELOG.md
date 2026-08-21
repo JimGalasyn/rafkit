@@ -34,7 +34,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   experiment and calibrating against no published number. It says the model is consistent,
   not that it is right.
 
-  ⚠ Two corrections found while testing, both recorded because the null case hid them. (i)
+  ⚠ Three corrections found while testing, the first two recorded because the null case hid
+  them. (i)
   An additive assignment returns a sequence correlation length of 0.027 bonds rather than 0
   — roundoff in `exp` reported as sequence memory — so subdominant eigenvalues below 1e-12
   of the leading one are read as zero, and the 2×2 case is taken in closed form where
@@ -42,7 +43,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   not the first molecule: a monomer has no bonds, so the step from length 1 to 2 is a
   boundary term. A uniform assignment happens to satisfy it anyway, which is exactly why it
   went unnoticed; on an additive-but-not-uniform assignment at `ρ = 0.4` the first step is
-  0.377 and `mean_length` overstates the number-average by 1.4%.
+  0.377 and `mean_length` overstates the number-average by 1.4%. (iii) Perron–Frobenius
+  constrains the **leading** eigenvalue and nothing else: a positive matrix of size 3 or more
+  may have complex subdominant eigenvalues, and a randomly drawn 4x4 bond-energy matrix does
+  so on the first try. Rejecting them as impossible refused an ordinary nucleotide chemistry;
+  they are legitimate — a complex pair means a correlation that oscillates as it decays — and
+  the decay length is set by the modulus either way.
 
 - `rafkit.permeation` — size-selective transport across a compartment membrane, following
   Hordijk, Naylor, Krasnogor & Fellermann (*Life* 8(3), 33, 2018). **Deliberately off-theme**
