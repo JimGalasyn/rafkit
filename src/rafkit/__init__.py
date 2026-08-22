@@ -5,11 +5,13 @@ maximal RAFs, the self-referential ("strictly autocatalytic") variant, irreducib
 RAF sampling, Kauffman's binary polymer model as a generator, and stochastic simulation
 of a network so that subRAFs can be watched seeding themselves into existence.
 
-Three modules are deliberately off that theme. `dilution` reproduces a two-species
+Four modules are deliberately off that theme. `dilution` reproduces a two-species
 autocatalytic ODE with no RAF structure at all, because it is the library's only
 *analytic* calibration target. `permeation` is one line of membrane transport physics,
 there because it is a modelling choice that changes the answer and is easy to get
-wrong in a way that produces plausible numbers. `thermo` supplies the free energy the
+wrong in a way that produces plausible numbers. `autocatalysis` decides whether a set of
+reactions can all run forward at once, which is a thermodynamic question RAF theory cannot pose
+and is this project's external calibration anchor. `thermo` supplies the free energy the
 rest of the library leaves implicit -- unit rate constants in both directions assert
 that every polymer is isoenergetic with its parts -- and makes catalysis a ratio
 applied to both directions rather than a licence to exist. See their docstrings.
@@ -21,6 +23,8 @@ numbers rather than errors.
 See the README for the calibration against Steel, Hordijk & Smith (2012) and for
 CatReNet interoperability.
 """
+from rafkit.autocatalysis import (Consistency, affinities,
+                                  is_thermodynamically_consistent, stoichiometry)
 from rafkit.binary_polymer import BinaryPolymerNetwork, binary_polymer
 from rafkit.complementary_polymer import (complement,
                                           complementary_polymer)
@@ -54,6 +58,7 @@ __version__ = "0.5.0"
 
 __all__ = [
     "BinaryPolymerNetwork", "binary_polymer",
+    "Consistency", "is_thermodynamically_consistent", "stoichiometry", "affinities",
     "complementary_polymer",
     "firing_disk_polymer",
     "complement", "ReactionNetwork",

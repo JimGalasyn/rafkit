@@ -92,6 +92,7 @@ counted as **one** catalysed reaction, not two. Use `net.catalysis_level` — no
 | `max_urafs` | uninhibited RAFs, when a molecule can prevent a reaction |
 | `run_serial_dilution` / `run_cstr` | dilution protocols for growing–dividing compartments — **not a RAF algorithm**, see below |
 | `permeation_flux` / `permeable_by_length` | size-selective transport across a compartment membrane — **not a RAF algorithm**, see below |
+| `is_thermodynamically_consistent` | can these reactions all run forward at once? — **not a RAF algorithm**, see below |
 | `BondEnergies` / `rate_constants` | free energy of a polymer chemistry, and the rate constants it forces — **not a RAF algorithm**, see below |
 | `detailed_balance_residual` | whether a set of rate constants is consistent with the free energies |
 | `elongation_ratio` / `mean_length` / `sequence_correlation_length` | the equilibrium ensemble, closed form |
@@ -101,7 +102,7 @@ counted as **one** catalysed reaction, not two. Use `net.catalysis_level` — no
 Every algorithm carries hand-computed known-answer tests, because a RAF algorithm that
 is subtly wrong produces plausible numbers rather than errors.
 
-## Three modules are deliberately off-theme: `dilution`, `permeation` and `thermo`
+## Four modules are deliberately off-theme: `dilution`, `permeation`, `thermo` and `autocatalysis`
 
 Everything above takes a `ReactionNetwork` and asks a RAF question of it. `rafkit.dilution`
 takes no network at all — it is a **two-species ordinary differential equation with no RAF
@@ -291,6 +292,50 @@ number.
 does not, so it sits beside `dilution` rather than beside the figure reproductions — but it
 reproduces no experiment and calibrates against no published number. It says the model is
 *consistent*, not that it is *right*.
+
+### `autocatalysis` — the one place this library can be told it is wrong by someone else
+
+`rafkit.autocatalysis` decides a question RAF theory cannot pose: **given that these reactions must
+run in these directions, does any assignment of chemical potentials make that happen?** That is the
+CAC question of Kosc, Kuperberg, Rajon & Charlat, [*PNAS* **122**(18) e2421274122
+(2025)](https://doi.org/10.1073/pnas.2421274122).
+
+**The whole module is one reduction.** With `x = e^μ` and barrier factor `b_i = e^{−G‡_i}`, local
+detailed balance gives `v_i = b_i(∏x^{S⁻} − ∏x^{S⁺})`. Since `b_i > 0`, **the barrier scales the flow
+but cannot flip its sign**, so with `y = ln x = μ` reaction `i` runs forward exactly when
+`(Sᵀy)_i < 0`. The question becomes **strict linear feasibility of `Sᵀ y < 0`** — a linear program in
+the chemical potentials, and nothing else.
+
+⚠⚠ **The verdict therefore depends on no rate constant and no barrier**, which the paper states
+outright. The API accepts none, and a test asserts that it accepts none.
+
+**Two independent methods, required to agree.** Gordan's theorem says exactly one of `Sᵀy < 0` (a
+witness) and `S w = 0, w ≥ 0, w ≠ 0` (a certificate) can hold. Both are computed and disagreement
+**raises** rather than picking a winner.
+
+**Checked against the published answers** — Kosc's Fig. 4, two cores sharing `{R2, R3}`:
+
+| | verdict | source |
+|---|---|---|
+| `{R1,R2,R3,R4}` alone | consistent | **Theorem 2** — a single PAC always is |
+| `{R1',R2,R3,R4'}` alone | consistent | **Theorem 2** |
+| both together | **inconsistent** | **Box 2** — a multiPAC that is not a multiCAC |
+
+⚠ That network is *reconstructed* from Box 2's flow equations (the paper draws it as a figure) and
+cross-checked against the figure's composition glyphs: every reaction mass-balances, both cores are
+autocatalytic in `e4`, and they share exactly two reactions as the caption says.
+
+**And the certificate explains itself.** It comes back with every weight equal — the six reactions at
+unit flux return the system to its starting composition. Then `Σ w_i A_i = −(S w)·y = 0`, so the
+affinities cannot all be positive: **a cycle that returns to its starting composition cannot be
+downhill all the way round.** The second law, as a linear-algebra identity.
+
+**Why it matters more than a bigger test suite.** Theorem 2 is an *external* guarantee — a single PAC
+is always consistent — so **every network this library can generate is a pass/fail case adjudicated
+by someone else.** It is the one place rafkit can be shown wrong without anyone here noticing first.
+
+⚠ Needs `scipy` for the LP: `pip install rafkit[cac]`. Imported lazily, so `import rafkit` and every
+other module stay numpy-only.
 
 ## A reaction network is a Petri net
 
