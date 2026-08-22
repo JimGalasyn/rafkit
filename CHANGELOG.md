@@ -5,6 +5,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-08-22
+
 ### Changed
 
 - **`dg_assoc` is now required, with no default**, in every `rafkit.thermo` entry point whose
@@ -179,6 +181,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   so on the first try. Rejecting them as impossible refused an ordinary nucleotide chemistry;
   they are legitimate — a complex pair means a correlation that oscillates as it decays — and
   the decay length is set by the modulus either way.
+
+- **`permeation_flux` accepts batched geometry.** `permeability`, `area` and both volumes may
+  each be a scalar or an array broadcastable against the **compartment axes** of `n_in`, so a
+  whole population of compartments of differing size steps at once — the case a spatial model
+  needs, where every pore holds a cell with its own radius. ⚠ A per-**species** vector is refused
+  rather than broadcast: there is no way to tell one from a per-compartment vector when the two
+  counts coincide, and guessing produced a silent wrong answer ([1.6, 1.6, 1.6, 1.6] where the
+  right answer was [1.6, 3.2, 4.8, 6.4]). Per-species variation belongs in `permeable`.
 
 - `rafkit.permeation` — size-selective transport across a compartment membrane, following
   Hordijk, Naylor, Krasnogor & Fellermann (*Life* 8(3), 33, 2018). **Deliberately off-theme**
