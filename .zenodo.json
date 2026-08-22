@@ -11,17 +11,22 @@
       "name": "Théodore, Claude"
     }
   ],
-  "description": "Maximal RAFs, strictly autocatalytic RAFs, irreducible-RAF sampling and census, exploitability, uninhibited RAFs (u-RAFs), and Gillespie simulation of catalytic reaction networks. Three binary-polymer generators: Kauffman's K-BPM with optional cleavage and generated inhibition; Serra & Villani's C-BPM, where catalysis follows active-site complementarity rather than a coin flip; and their firing-disk construction, which grows a chemistry closed under its own production instead of enumerating one. Hand-computed known-answer tests throughout, regression tests against CatReNet's own output on a committed fixture, and worked examples reproducing published results. Reads and writes the CRS interchange format and exports PNML.",
+  "description": "Maximal RAFs, strictly autocatalytic RAFs, irreducible-RAF sampling and census, exploitability, uninhibited RAFs (u-RAFs), and Gillespie simulation of catalytic reaction networks. Three binary-polymer generators: Kauffman's K-BPM with optional cleavage and generated inhibition; Serra &amp; Villani's C-BPM, where catalysis follows active-site complementarity rather than a coin flip; and their firing-disk construction, which grows a chemistry closed under its own production instead of enumerating one. Four modules are deliberately off that theme, each because it is a modelling choice that changes the answer: dilution reproduces the closed-form serial-dilution and CSTR conditions of Matsubara et al.; permeation implements size-selective membrane transport as a concentration difference rather than a count difference; thermo supplies bond energies and the rate constants they force, making catalysis a ratio applied to both directions so that detailed balance holds by construction rather than by assumption; and autocatalysis decides the thermodynamic consistency of autocatalytic cycles after Kosc et al. (PNAS 2025), which gives the library an external pass/fail anchor. Hand-computed known-answer tests throughout, regression tests against CatReNet's own output on a committed fixture, and worked examples reproducing published results. Reads and writes the CRS interchange format and exports PNML.",
   "keywords": [
-    "autocatalytic-sets",
     "RAF",
-    "origin-of-life",
-    "chemical-reaction-networks",
-    "systems-chemistry",
+    "abiogenesis",
+    "autocatalytic-sets",
     "binary-polymer-model",
     "catalysis",
-    "abiogenesis",
+    "chemical-organisation-theory",
+    "chemical-reaction-networks",
+    "detailed-balance",
+    "non-equilibrium",
+    "origin-of-life",
     "protocells",
-    "template-based-catalysis"
+    "stoichiometric-autocatalysis",
+    "systems-chemistry",
+    "template-based-catalysis",
+    "thermodynamics"
   ]
 }
