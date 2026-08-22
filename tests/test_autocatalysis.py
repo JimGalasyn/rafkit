@@ -209,3 +209,101 @@ class TestTheCrossCheckCanActuallyFire:
             success, x = False, None
         monkeypatch.setattr(so, "linprog", lambda *a, **k: Failed())
         assert ac._gordan_certificate(np.array([[1.0, -1.0]])) is None
+
+
+class TestReviewFindings:
+    """Each reproduced on the branch before it was fixed."""
+
+    @pytest.mark.parametrize("exponent", range(-12, 13, 3))
+    def test_the_verdict_is_SCALE_INVARIANT(self, exponent):
+        """⚠ It was not. `A → B` scaled by 1e-10 returned `consistent=False` with `w = [1.0]`,
+        for which `S w = 1e-10·[−1,1] ≠ 0` — a wrong verdict carrying an invalid proof.
+
+        Both LPs were fooled the same way, so the cross-check stayed silent and the natural
+        regime shipped green while `TestTheCrossCheckCanActuallyFire` passed. **A guard that
+        detects a forced disagreement has not been shown to detect a real one.**
+
+        Fixed by normalising columns, which is exact rather than a tolerance choice: both
+        Gordan alternatives are preserved under positive column scaling.
+        """
+        scale = 10.0 ** exponent
+        good, _ = stoichiometry([(["A"], ["B"])])
+        loop, _ = stoichiometry([(["A"], ["B"]), (["B"], ["A"])])
+        assert is_thermodynamically_consistent(good * scale).consistent
+        assert not is_thermodynamically_consistent(loop * scale).consistent
+
+    @pytest.mark.parametrize("exponent", [-12, -6, 0, 6, 12])
+    def test_a_returned_certificate_really_satisfies_S_w_equals_zero(self, exponent):
+        """`res.success` is the solver's opinion about its own convergence. `‖S w‖ ≤ tol` is the
+        property the caller needs. The first used to be accepted for the second."""
+        S, _ = stoichiometry([(["A"], ["B"]), (["B"], ["A"])])
+        S = S * 10.0 ** exponent
+        w = is_thermodynamically_consistent(S).certificate
+        # ⚠ RELATIVE residual, against the size of the terms actually being cancelled. An
+        # absolute bound is meaningless here: the certificate lives in the caller's
+        # coordinates, so `|w| ~ 1/scale` and `S w` is a difference of O(1) quantities.
+        term_scale = float((np.abs(S) @ np.abs(w)).max())
+        assert np.abs(S @ w).max() <= 1e-9 * term_scale
+        assert w.min() >= 0 and w.sum() > 0
+
+    def test_the_certificate_is_returned_in_the_CALLERS_coordinates(self):
+        """Normalising columns internally moved the certificate into the normalised basis, so
+        `S @ w` was not zero for the matrix the caller passed. Caught by the Fig. 4 null-cycle
+        test, which is why that test checks the raw matrix rather than an internal one."""
+        S = S_of(BOTH)
+        w = is_thermodynamically_consistent(S).certificate
+        assert np.allclose(S @ w, 0.0, atol=1e-12)
+
+    def test_a_reaction_with_no_net_stoichiometry_is_its_own_certificate(self):
+        """`A → A` gives an all-zero column: `(Sᵀy)_i = 0` for every `y`, never `< 0`."""
+        S, _ = stoichiometry([(["A"], ["A"])])
+        r = is_thermodynamically_consistent(S)
+        assert not r.consistent
+        assert r.certificate is not None and r.certificate.sum() > 0
+
+    def test_reactions_may_be_a_one_shot_iterable(self):
+        """It was iterated up to three times: a generator raised TypeError, and a single-pass
+        iterable reporting a length would have produced a silently all-zero matrix."""
+        gen = ((l, r) for l, r in [(["A"], ["B"]), (["B"], ["C"])])
+        S, sp = stoichiometry(gen)
+        assert S.shape == (3, 2) and np.abs(S).sum() == 4
+
+    def test_an_incomplete_species_list_says_so(self):
+        """A bare `KeyError('C')` names the symptom, not the caller's actual mistake."""
+        with pytest.raises(ValueError, match="not in the given species list"):
+            stoichiometry([(["A"], ["C"])], species=["A", "B"])
+
+    def test_import_rafkit_stays_numpy_only(self):
+        """⚠ This invariant held, but nothing guarded it — and the PR body claimed it was tested.
+
+        Run in a subprocess: scipy imported by another test in this same process would mask a
+        top-level `import scipy` anywhere `rafkit/__init__` reaches.
+        """
+        import subprocess
+        import sys
+        subprocess.check_call(
+            [sys.executable, "-c",
+             "import rafkit, sys; assert 'scipy' not in sys.modules, "
+             "'rafkit pulled scipy in at import time'"])
+
+    def test_figure_3_is_documented_as_ABSENT_not_claimed_as_present(self):
+        """The module docstring said the suite carries "Fig. 3 and Fig. 4". Only Fig. 4 exists —
+        Fig. 3 fails at the flow level and never reaches thermodynamics, so it belongs to a
+        layer this module does not implement. The docstring now says that."""
+        import rafkit.autocatalysis as ac
+        assert "Fig. 3 is deliberately NOT here" in ac.__doc__
+        assert "CAC layer only" in ac.__doc__
+
+    def test_a_malformed_solver_result_is_rejected_rather_than_returned(self, monkeypatch):
+        """The verification guard, exercised. `res.success` can be True while `x` is not a
+        usable certificate — negative entries, or a scale that does not sum to 1."""
+        import rafkit.autocatalysis as ac
+        import scipy.optimize as so
+
+        for bad in (np.array([-0.5, 1.5]), np.array([0.2, 0.2])):
+            class Res:
+                success, x = True, bad
+            monkeypatch.setattr(so, "linprog", lambda *a, **k: Res())
+            S, _ = stoichiometry([(["A"], ["B"]), (["B"], ["A"])])
+            Sn = S / np.linalg.norm(S, axis=0)
+            assert ac._gordan_certificate(Sn) is None

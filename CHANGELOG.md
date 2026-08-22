@@ -62,7 +62,22 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   the way round** — the second law as a linear-algebra identity.
 
   ⚠ `scipy` is an **optional** dependency (`pip install rafkit[cac]`), imported lazily; `import
-  rafkit` and every other module stay numpy-only.
+  rafkit` and every other module stay numpy-only, asserted by a **subprocess** test so that scipy
+  imported by another test cannot mask a regression.
+
+  ⚠⚠ Five code-review findings, one of them the failure the module exists to prevent. The two LPs
+  used inconsistent tolerances, so on an ill-conditioned `S` **both were fooled the same way**: `A ->
+  B` scaled by 1e-10 returned `consistent=False` with `w = [1.0]`, for which `S w != 0`. The
+  cross-check stayed silent because the methods agreed on a wrong answer with an INVALID
+  CERTIFICATE. The mutation test passed throughout, because forcing a disagreement proves the guard
+  CAN fire, not that it fires when it should. Fixed by normalising columns -- exact, not a tolerance
+  choice, since both Gordan alternatives are preserved under positive column scaling -- plus
+  verifying `||S w|| <= tol` rather than trusting `res.success`. Verdicts now hold over 24 decades
+  of scaling. Also: a zero column (a reaction with no net stoichiometry) is its own certificate;
+  certificates are mapped back into the CALLER's coordinates (a regression the Fig. 4 null-cycle
+  test caught); `stoichiometry` accepts one-shot iterables and names an incomplete species list
+  instead of raising a bare KeyError; and the docstring no longer claims a Fig. 3 known-answer test
+  -- Fig. 3 fails at the flow level, which is a layer this module does not implement.
 
 - **`rafkit.thermo` reaches the simulator.** `Kinetics` (per-reaction *uncatalysed* rate
   constants plus the factor a **present** catalyst applies), `kinetics_from_energies`, and
