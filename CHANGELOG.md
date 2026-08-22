@@ -32,6 +32,53 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`rafkit.autocatalysis` — thermodynamic consistency of autocatalytic cycles**, after Kosc,
+  Kuperberg, Rajon & Charlat (*PNAS* 122(18) e2421274122, 2025). Decides whether a set of reactions
+  can all run forward at once for *some* assignment of chemical potentials — the CAC question, which
+  RAF theory cannot pose.
+
+  The module is one reduction: with `x = e^mu` and barrier factor `b_i = e^{-G!_i}`, local detailed
+  balance gives `v_i = b_i(prod x^S- - prod x^S+)`, and since `b_i > 0` the barrier scales the flow
+  but cannot flip its sign. So with `y = ln x`, reaction `i` runs forward iff `(S^T y)_i < 0`, and
+  the question is **strict linear feasibility of `S^T y < 0`**. ⚠⚠ The verdict depends on **no rate
+  constant and no barrier** — the API accepts none, and a test asserts it accepts none.
+
+  Decided **two independent ways** that must agree: an LP for the witness, and Gordan's theorem for
+  the certificate (`S w = 0, w >= 0, w != 0`). Disagreement **raises** rather than choosing a winner.
+
+  ⚠ **This is the project's external calibration anchor**, replacing `f ~ 1.20` — and it is stronger,
+  because that was a published *figure* matched with a *fitted* parameter while these are exact
+  verdicts with no free parameter. Kosc's **Theorem 2** (a single PAC is always consistent) makes
+  every network the library can generate a pass/fail case adjudicated by someone else.
+
+  Checked against Fig. 4: each core alone consistent, both together **not** — reproducing the
+  published multiPAC-but-not-multiCAC result. ⚠ That network is *reconstructed* from Box 2's flow
+  equations and cross-checked against the figure's composition glyphs (all six reactions
+  mass-balance; both cores autocatalytic in `e4`; they share exactly `{R2,R3}`).
+
+  The failure certificate came back with **every weight equal**: the six reactions at unit flux
+  return the system to its starting composition, so `sum w_i A_i = -(S w).y = 0` and the affinities
+  cannot all be positive. **A cycle that returns to its starting composition cannot be downhill all
+  the way round** — the second law as a linear-algebra identity.
+
+  ⚠ `scipy` is an **optional** dependency (`pip install rafkit[cac]`), imported lazily; `import
+  rafkit` and every other module stay numpy-only, asserted by a **subprocess** test so that scipy
+  imported by another test cannot mask a regression.
+
+  ⚠⚠ Five code-review findings, one of them the failure the module exists to prevent. The two LPs
+  used inconsistent tolerances, so on an ill-conditioned `S` **both were fooled the same way**: `A ->
+  B` scaled by 1e-10 returned `consistent=False` with `w = [1.0]`, for which `S w != 0`. The
+  cross-check stayed silent because the methods agreed on a wrong answer with an INVALID
+  CERTIFICATE. The mutation test passed throughout, because forcing a disagreement proves the guard
+  CAN fire, not that it fires when it should. Fixed by normalising columns -- exact, not a tolerance
+  choice, since both Gordan alternatives are preserved under positive column scaling -- plus
+  verifying `||S w|| <= tol` rather than trusting `res.success`. Verdicts now hold over 24 decades
+  of scaling. Also: a zero column (a reaction with no net stoichiometry) is its own certificate;
+  certificates are mapped back into the CALLER's coordinates (a regression the Fig. 4 null-cycle
+  test caught); `stoichiometry` accepts one-shot iterables and names an incomplete species list
+  instead of raising a bare KeyError; and the docstring no longer claims a Fig. 3 known-answer test
+  -- Fig. 3 fails at the flow level, which is a layer this module does not implement.
+
 - **`rafkit.thermo` reaches the simulator.** `Kinetics` (per-reaction *uncatalysed* rate
   constants plus the factor a **present** catalyst applies), `kinetics_from_energies`, and
   `propensities(..., kinetics=...)` / `simulate(..., kinetics=...)`. The split keeps the
