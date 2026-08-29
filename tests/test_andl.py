@@ -23,6 +23,7 @@ import pytest
 from rafkit import parse_crs
 from rafkit.andl import to_andl, write_andl
 from rafkit.binary_polymer import BinaryPolymerNetwork
+from rafkit.network import ReactionNetwork
 
 
 def _lines(text):
@@ -135,6 +136,79 @@ class TestRefusals:
         text = to_andl(net, 1.0, k_uncat=0.01)
         assert "omitted" not in text
         assert "t_4_r2_u" in text
+
+
+class TestReviewFindings:
+    """One test per confirmed finding of the PR #16 review, in its numbering."""
+
+    def test_1_duplicate_reaction_names_are_refused(self):
+        net = parse_crs("Food: a, b\nr1 : a + b [c] => c\nr1 : a [c] => q\n")
+        with pytest.raises(ValueError, match="duplicate reaction names"):
+            to_andl(net, 1.0)
+
+    def test_1b_duplicate_molecule_names_are_refused(self):
+        net = ReactionNetwork(molecules=("a", "a", "b"), food=frozenset({0}),
+                              reaction_pairs=(((0,), (2,)),),
+                              catalysts=(frozenset({frozenset({2})}),))
+        with pytest.raises(ValueError, match="duplicate molecule names"):
+            to_andl(net, 1.0)
+
+    def test_2_empty_catalyst_set_is_the_spontaneous_channel(self):
+        net = parse_crs("Food: a, b\nr1 : a + b [{}] => c\n")
+        text = to_andl(net, 1.0)
+        block = text[text.index("\n  t_2_r1\n"):]
+        block = block[:block.index(";")]
+        # spontaneous: reactant and product arcs only, no self-loop anywhere
+        assert "[s_1_a - 1]" in block and "[s_1_c + 1]" in block
+        assert block.count("&") == 2
+
+    def test_2b_empty_catalyst_set_conflicts_with_k_uncat(self):
+        net = parse_crs("Food: a, b\nr1 : a + b [{}] => c\n")
+        with pytest.raises(ValueError, match="second spontaneous rate"):
+            to_andl(net, 1.0, k_uncat=0.001)
+
+    def test_4_the_name_parameter_is_sanitised(self):
+        net = parse_crs("Food: a, b\nr1 : a + b [c] => c\n")
+        text = to_andl(net, 1.0, name="run [3] baseline")
+        assert "spn  [run__3__baseline]" in text
+
+    def test_5_non_ascii_names_do_not_reach_identifiers(self):
+        net = parse_crs("Food: \u03b1\nr1 : \u03b1 [{}] => \u03b2\n")
+        text = to_andl(net, 1.0)
+        body = text[text.index("spn"):]
+        assert "\u03b1" not in body and "\u03b2" not in body
+
+    def test_6_engineered_cross_kind_collisions_are_disambiguated_and_listed(self):
+        net = parse_crs("Food: a, b\n"
+                        "r1 : a + b [{c},{d}] => c\n"      # channel 2 -> t_4_r1_2
+                        "r1_2 : a [c] => q\n")             # collides, gets __2
+        text = to_andl(net, 1.0)
+        assert "t_4_r1_2__2" in text
+        assert "Disambiguated ids" in text
+
+    def test_7_finite_food_is_disclosed_in_the_header(self):
+        net = parse_crs("Food: a, b\nr1 : a + b [c] => c\n")
+        assert "NO FOOD SOURCES" in to_andl(net, 1.0)
+        assert "NO FOOD SOURCES" not in to_andl(net, 1.0, food_influx=1.0)
+
+    def test_8_a_mapping_shaped_k_is_refused(self):
+        net = parse_crs("Food: a, b\nr1 : a + b [c] => c\n")
+        with pytest.raises(ValueError, match="not a mapping"):
+            to_andl(net, {0: 0.5})
+
+    def test_9_nonfinite_and_negative_rates_are_refused(self):
+        net = parse_crs("Food: a, b\nr1 : a + b [c] => c\n")
+        with pytest.raises(ValueError, match="finite non-negative"):
+            to_andl(net, 1.0, washout=float("nan"))
+        with pytest.raises(ValueError, match="finite non-negative"):
+            to_andl(net, -1.0)
+
+    def test_10_markings_must_be_nonnegative_integers(self):
+        net = parse_crs("Food: a, b\nr1 : a + b [c] => c\n")
+        with pytest.raises(ValueError, match="non-negative integers"):
+            to_andl(net, 1.0, marking={"a": -3})
+        with pytest.raises(ValueError, match="non-negative integers"):
+            to_andl(net, 1.0, marking={"a": 0.9})
 
 
 def test_write_andl_round_trips_through_a_file(tmp_path):
