@@ -37,6 +37,7 @@ from rafkit.dilution import (DilutionResult, flux_linear, flux_quadratic,
 from rafkit.gillespie import Trajectory, propensities, simulate
 from rafkit.inhibition import (classes_from_inhibitors, is_uninhibited, is_uraf,
                                max_urafs, support)
+from rafkit.andl import to_andl, write_andl
 from rafkit.network import ReactionNetwork
 from rafkit.permeation import permeable_by_length, permeation_flux
 from rafkit.pnml import to_pnml, write_pnml
@@ -77,6 +78,7 @@ __all__ = [
     "detailed_balance_residual", "transfer_matrix", "elongation_ratio", "mean_length",
     "sequence_correlation_length", "unpaired_catalysis",
     "Kinetics", "kinetics_from_energies",
+    "to_andl", "write_andl",
     "to_pnml", "write_pnml",
     "simulate", "propensities", "Trajectory",
     "max_urafs", "is_uraf", "is_uninhibited", "support", "classes_from_inhibitors",

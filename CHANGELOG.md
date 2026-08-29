@@ -5,6 +5,32 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`rafkit.andl`** (`to_andl`, `write_andl`): export a network plus mass-action rate
+  constants to ANDL, the PetriNuts framework's executable Petri net format — where
+  `rafkit.pnml` makes a network *readable* by the Petri net ecosystem, this makes it
+  *runnable* by Spike, an independently developed stochastic simulator. Semantics are
+  mass action only, calibrated against Spike 1.6.0rc2 by measurement (per-color rates,
+  consume-and-produce catalysis `k·A·C`, unordered pair convention `n(n−1)/2` with the
+  alternatives 19–25 SE away, and empty-preset sources firing at the bare constant —
+  the last verified by this module's own Spike smoke test). Rate constants are emitted
+  as named constants so a `.spc` configuration can override any single rate without
+  regenerating the file. Refused rather than silently altered, because an executable
+  export that drops a feature *runs* a different system: inhibition, and a catalyst
+  that is also a reactant of the same reaction (the weight-2 pre-arc convention trap).
+  ⚠ Identical-reactant note: `rafkit.gillespie` shares Spike's `n(n−1)/2`;
+  `abiogenesis.stochastic` counts ordered pairs `n(n−1)` — a caller mapping that
+  chemistry must pre-double self-pair rate constants. The PR #16 review then hardened
+  the input perimeter (10 confirmed findings, one test each): duplicate names refused,
+  `chi = {∅}` emits its spontaneous channel and conflicts with `k_uncat`, rates must be
+  finite and non-negative (Spike loads `nan` silently — measured), markings must be
+  non-negative integers, mapping-shaped `k` refused, ASCII-only identifiers with
+  disambiguations listed in the generated header, and a finite-food run discloses
+  itself in its own header. ⚠ Known lossy in-library path, documented not fixed here:
+  `to_crs` deduplicates reactants, so a CRS text round-trip halves self-pair
+  stoichiometry — do not route stoichiometric exports through CRS.
+
 ### Maintenance
 
 - v0.6.0's version DOI (`10.5281/zenodo.22059548`) recorded in `CITATION.cff`. Written in the
