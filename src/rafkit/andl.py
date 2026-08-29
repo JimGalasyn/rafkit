@@ -61,8 +61,17 @@ __all__ = ["to_andl", "write_andl"]
 
 
 def _identifier(name: str, taken: dict[str, str], prefix: str) -> str:
-    """A deterministic ANDL identifier for `name`, unique within `taken`."""
-    base = prefix + re.sub(r"\W", "_", name)
+    """A deterministic ANDL identifier for `name`, unique within `taken`.
+
+    ⚠ Length-prefixed (``s_1_a``, ``s_2_ab``), and it is load-bearing: Spike 1.6.0rc2
+    silently MISROUTES a transition's products when one place name is a proper prefix
+    of another (measured 2026-08-29: with places ``s_0`` and ``s_00``, tokens landed in
+    unrelated places, exceeding their own maximum possible production). The length
+    prefix makes a proper prefix relation between distinct names impossible; applied
+    to transition names too, where ``t_r1`` / ``t_r1_u`` had the same shape.
+    """
+    clean = re.sub(r"\W", "_", name)
+    base = f"{prefix}{len(clean)}_{clean}"
     cand, n = base, 1
     while cand in taken and taken[cand] != name:
         n += 1

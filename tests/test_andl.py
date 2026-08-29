@@ -33,14 +33,14 @@ class TestMapping:
     def test_places_are_molecules_with_food_marked(self):
         net = parse_crs("Food: a, b\nr1 : a + b [c] => c\n")
         text = to_andl(net, 1.0)
-        assert "s_a = 1;" in _lines(text)
-        assert "s_b = 1;" in _lines(text)
-        assert "s_c = 0;" in _lines(text)
+        assert "s_1_a = 1;" in _lines(text)
+        assert "s_1_b = 1;" in _lines(text)
+        assert "s_1_c = 0;" in _lines(text)
 
     def test_catalyst_is_a_consume_and_produce_self_loop(self):
         net = parse_crs("Food: a, b\nr1 : a + b [z] => c\n")
         text = to_andl(net, 1.0)
-        assert "[s_z - 1]" in text and "[s_z + 1]" in text
+        assert "[s_1_z - 1]" in text and "[s_1_z + 1]" in text
 
     def test_autocatalyst_merges_self_loop_with_product_arc(self):
         """c catalyses its own production: the self-loop's +1 and the product's +1
@@ -48,7 +48,7 @@ class TestMapping:
         k*A*B*C -- the autocatalytic loop rendered faithfully, not an error."""
         net = parse_crs("Food: a, b\nr1 : a + b [c] => c\n")
         text = to_andl(net, 1.0)
-        assert "[s_c - 1]" in text and "[s_c + 2]" in text
+        assert "[s_1_c - 1]" in text and "[s_1_c + 2]" in text
 
     def test_alternative_catalyst_sets_become_separate_transitions(self):
         net = parse_crs("Food: a, b\nr1 : a + b [{y,z},w] => c\n")
@@ -60,7 +60,7 @@ class TestMapping:
     def test_conjunctive_catalyst_set_loops_every_member(self):
         net = parse_crs("Food: a, b\nr1 : a + b [{y,z}] => c\n")
         text = to_andl(net, 1.0)
-        for m in ("s_y", "s_z"):
+        for m in ("s_1_y", "s_1_z"):
             assert f"[{m} - 1]" in text and f"[{m} + 1]" in text
 
     def test_identical_reactants_get_a_weight_two_arc(self):
@@ -69,36 +69,36 @@ class TestMapping:
                                    catalysts=(frozenset(),), p=0.0, max_len=2,
                                    food_len=1)
         text = to_andl(net, 1.0, k_uncat=0.5)
-        assert "[s_0 - 2]" in text
+        assert "[s_1_0 - 2]" in text
 
     def test_k_uncat_adds_a_background_channel_per_reaction(self):
         net = parse_crs("Food: a, b\nr1 : a + b [c] => c\n")
         text = to_andl(net, 1.0, k_uncat=0.05)
-        assert "t_r1_u" in text
+        assert "t_4_r1_u" in text
         assert "= 0.05;" in text
         # The background channel does not touch the catalyst.
-        block = text[text.index("t_r1_u"):]
+        block = text[text.index("t_4_r1_u"):]
         block = block[:block.index(";")]
-        assert "s_c" not in block
+        assert "s_1_c" not in block
 
     def test_rates_are_named_constants_so_a_config_can_override_one(self):
         net = parse_crs("Food: a, b\nr1 : a + b [c] => c\n")
         text = to_andl(net, 0.125)
-        assert "double k_t_r1 = 0.125;" in text
-        assert "MassAction(k_t_r1)" in text
+        assert "double k_t_2_r1 = 0.125;" in text
+        assert "MassAction(k_t_2_r1)" in text
 
     def test_marking_overrides_and_food_default(self):
         net = parse_crs("Food: a, b\nr1 : a + b [c] => c\n")
         text = to_andl(net, 1.0, marking={"a": 40, "c": 7})
-        assert "s_a = 40;" in _lines(text)
-        assert "s_b = 1;" in _lines(text)      # food default survives elsewhere
-        assert "s_c = 7;" in _lines(text)
+        assert "s_1_a = 40;" in _lines(text)
+        assert "s_1_b = 1;" in _lines(text)      # food default survives elsewhere
+        assert "s_1_c = 7;" in _lines(text)
 
     def test_influx_and_washout_transitions(self):
         net = parse_crs("Food: a, b\nr1 : a + b [c] => c\n")
         text = to_andl(net, 1.0, food_influx=40.0, washout={"c": 0.1})
-        assert "t_src_a" in text and "t_src_b" in text
-        assert "t_out_c" in text and "[s_c - 1]" in text
+        assert "t_5_src_a" in text and "t_5_src_b" in text
+        assert "t_5_out_c" in text and "[s_1_c - 1]" in text
 
 
 class TestRefusals:
@@ -134,7 +134,7 @@ class TestRefusals:
         net = parse_crs("Food: a, b\nr1 : a + b [c] => c\nr2 : a [] => q\n")
         text = to_andl(net, 1.0, k_uncat=0.01)
         assert "omitted" not in text
-        assert "t_r2_u" in text
+        assert "t_4_r2_u" in text
 
 
 def test_write_andl_round_trips_through_a_file(tmp_path):
