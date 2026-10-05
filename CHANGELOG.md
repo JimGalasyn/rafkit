@@ -7,6 +7,29 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`rafkit.templated_polymer`** (`templated_polymer`, `templated_catalysts`): a third
+  binary-polymer ensemble in which NOTHING is drawn — a species templates the ligation
+  `a + b -> ab` exactly when it contains the (reverse) complement of the product
+  (`rule="product"`, the default) or of the `2h` residues spanning the junction
+  (`rule="junction"`), given both reactants reach the per-side overlap `h`. Same molecules,
+  reactions and paired cleavage layout as `binary_polymer(cleavage=True)`, so every consumer
+  is unchanged. `templated_catalysts` is the rule as a pure function over whatever strands
+  exist, for a simulator that holds explicit strands. Sized on the complete `max_len` 7 set
+  and pinned as known answers: the junction rule SATURATES at `h` ≤ 2 (f = 978 and 142 —
+  every eligible reaction templated by 194 or 46 species, no specificity); the product rule
+  gives f = 12.9 at `h` 2 with a template count falling from 46 (4-mers) to 1 (7-mers); and
+  at `h` 3 the maximal RAF is empty under either rule, because templated reactions need
+  reactants only the uncatalysed background makes from a food set shorter than `h`.
+- **Nulls for a structured chemistry**: `degree_preserving_null` (a double-edge-swap chain
+  keeping every degree; `stratified=True` also keeps the LENGTHS of each reaction's
+  templates, which the plain shuffle breaks along with the sequence tie),
+  `motif_matched_null` (random catalysis with exactly the network's edge count,
+  self-catalysed reactions and mutual pairs), `matched_f_random` and `matched_f_cbpm`
+  (Kauffman's and Serra & Villani's ensembles at the network's catalysis level, in
+  expectation). `catalysis_motifs` reports what they are compared on — f, reach, catalysts
+  per reaction by product length, self-catalysed reactions and products, mutual pairs, the
+  maximal RAF's size — counted on the reversible pair, as `catalysis_level` is.
+
 - **`rafkit.andl`** (`to_andl`, `write_andl`): export a network plus mass-action rate
   constants to ANDL, the PetriNuts framework's executable Petri net format — where
   `rafkit.pnml` makes a network *readable* by the Petri net ecosystem, this makes it

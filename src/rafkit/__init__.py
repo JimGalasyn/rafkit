@@ -29,6 +29,10 @@ from rafkit.binary_polymer import BinaryPolymerNetwork, binary_polymer
 from rafkit.complementary_polymer import (complement,
                                           complementary_polymer)
 from rafkit.firing_disk import firing_disk_polymer
+from rafkit.templated_polymer import (catalysis_motifs, degree_preserving_null,
+                                      matched_f_cbpm, matched_f_random,
+                                      motif_matched_null, templated_catalysts,
+                                      templated_polymer)
 from rafkit.catalysis import catalysing_molecules, is_catalysed, normalise
 from rafkit.crs import parse_crs, read_crs, to_crs, write_crs
 from rafkit.dilution import (DilutionResult, flux_linear, flux_quadratic,
@@ -62,6 +66,8 @@ __all__ = [
     "Consistency", "is_thermodynamically_consistent", "stoichiometry", "affinities",
     "complementary_polymer",
     "firing_disk_polymer",
+    "templated_polymer", "templated_catalysts", "catalysis_motifs",
+    "degree_preserving_null", "motif_matched_null", "matched_f_random", "matched_f_cbpm",
     "complement", "ReactionNetwork",
     "RafResult", "max_raf", "max_raf_strict", "sample_irrraf", "irrraf_census",
     "exploitability", "is_food_catalysed", "catrenet_strictly_autocatalytic",
