@@ -267,6 +267,22 @@ class TestNulls:
                    (a["edges"], a["self_reactions"], a["pairs"])
             assert b["reach"] > a["reach"]            # nothing else of the structure is kept
 
+    def test_motif_matched_by_length_has_the_motifs_where_the_rule_has_them(self, net):
+        """Two counts are a thin description: planted anywhere, the self-catalysing products
+        and the pairs land at every length. `match_lengths` puts them at the rule's."""
+        a = catalysis_motifs(net)
+        assert a["self_products_by_length"] == {4: 4, 6: 8}
+        assert a["self_reactions_by_length"] == {4: 4, 6: 24}
+        assert a["pairs_by_lengths"] == {(4, 4): 6, (5, 5): 16, (6, 6): 28, (7, 7): 64}
+        keys = ("edges", "self_reactions", "pairs", "self_products", "self_products_by_length",
+                "self_reactions_by_length", "pairs_by_lengths")
+        for seed in range(3):
+            b = catalysis_motifs(motif_matched_null(net, np.random.default_rng(seed), match_lengths=True))
+            assert {k: b[k] for k in keys} == {k: a[k] for k in keys}
+        loose = catalysis_motifs(motif_matched_null(net, np.random.default_rng(0)))
+        assert loose["pairs_by_lengths"] != a["pairs_by_lengths"]
+        assert loose["self_products"] > a["self_products"]
+
     def test_matched_f_random_matches_f_in_expectation(self, net):
         target = catalysis_motifs(net)["f"]
         fs = [catalysis_motifs(matched_f_random(net, np.random.default_rng(s)))["f"]

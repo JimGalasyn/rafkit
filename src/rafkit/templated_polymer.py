@@ -190,6 +190,9 @@ def catalysis_motifs(net: BinaryPolymerNetwork) -> dict:
     ``pairs``                   unordered pairs of distinct molecules, each catalysing
                                 some reaction that MAKES the other
     ``raf_reactions``           size of the maximal RAF (both directions counted)
+    ``self_reactions_by_length``, ``self_products_by_length``
+                                the two self counts by the product's length
+    ``pairs_by_lengths``        the mutual pairs by their members' lengths, ``(short, long)``
     ==========================  ==========================================================
 
     ⚠ ``self_reactions`` counts reactions, not products: a 6-mer has five junctions.
@@ -211,14 +214,25 @@ def catalysis_motifs(net: BinaryPolymerNetwork) -> dict:
     for i in catalysed:
         for t in cats[i]:
             makes.setdefault(t, set()).add(product[i])
-    pairs = sum(1 for t, made in makes.items() for q in made if t < q and t in makes.get(q, ()))
+    mutual = [(t, q) for t, made in makes.items() for q in made if t < q and t in makes.get(q, ())]
+    pairs = len(mutual)
+    length = [len(m) for m in net.molecules]
+
+    def tally(keys):
+        out: dict = {}
+        for k in keys:
+            out[k] = out.get(k, 0) + 1
+        return dict(sorted(out.items()))
     return dict(
         edges=edges, f=edges / net.n_molecules if net.n_molecules else 0.0,
         reach=len(catalysed) / n if n else 0.0,
         per_reaction=edges / len(catalysed) if catalysed else 0.0,
         by_product_length={L: float(np.mean(v)) for L, v in sorted(by_len.items())},
         self_reactions=len(selfs), self_products=len({product[i] for i in selfs}),
-        pairs=pairs, raf_reactions=max_raf(net).size)
+        pairs=pairs, raf_reactions=max_raf(net).size,
+        self_reactions_by_length=tally(length[product[i]] for i in selfs),
+        self_products_by_length=tally(length[q] for q in {product[i] for i in selfs}),
+        pairs_by_lengths=tally(tuple(sorted((length[t], length[q]))) for t, q in mutual))
 
 
 # --- the nulls ----------------------------------------------------------------------------------
@@ -265,10 +279,23 @@ def degree_preserving_null(net: BinaryPolymerNetwork, rng: np.random.Generator, 
     return _with_pair_catalysts(net, [frozenset(c) for c in cats])
 
 
-def motif_matched_null(net: BinaryPolymerNetwork, rng: np.random.Generator
-                       ) -> BinaryPolymerNetwork:
+def motif_matched_null(net: BinaryPolymerNetwork, rng: np.random.Generator, *,
+                       match_lengths: bool = False) -> BinaryPolymerNetwork:
     """Random catalysis with `net`'s edge count and EXACTLY its self-catalysed reactions
     and mutual pairs (`catalysis_motifs`), and nothing else of its structure.
+
+    ⚠ Two counts are a thin description of a motif. Planted anywhere, the product rule's
+    28 self-catalysed reactions land on ~27 products of every length where the rule has
+    12 (four 4-mers, eight 6-mers), and its 114 pairs -- always two strands of EQUAL
+    length -- on every mix of lengths, dimers included; a pair with an always-present
+    dimer in it is not the dynamical object a 7-mer and its complement are. With the
+    default this is a second random-at-f chemistry with two counts pinned.
+    ``match_lengths=True`` plants the motifs BY LENGTH: the same number of
+    self-catalysing products and reactions at each product length, and the same number
+    of pairs at each pair of member lengths (``self_products_by_length``,
+    ``self_reactions_by_length``, ``pairs_by_lengths``). Still one junction a planted
+    edge, where the rule templates every eligible junction of a partner; and the
+    remainder still spreads over every reaction and every template length.
 
     The motifs are planted first -- a product on that many of its own reactions; that
     many pairs of molecules, each on one reaction making the other -- and the remaining
@@ -293,16 +320,38 @@ def motif_matched_null(net: BinaryPolymerNetwork, rng: np.random.Generator
         cats[r].add(t)
         makes.setdefault(t, set()).add(product[r])
 
-    for r in rng.choice(n, size=target["self_reactions"], replace=False):
-        add(product[int(r)], int(r))
-    planted = 0
-    while planted < target["pairs"]:
-        a, b = (makeable[int(x)] for x in rng.choice(len(makeable), size=2, replace=False))
-        if b in makes.get(a, ()) or a in makes.get(b, ()):
-            continue
-        add(a, int(rng.choice(making[b])))
-        add(b, int(rng.choice(making[a])))
-        planted += 1
+    length = [len(m) for m in net.molecules]
+    by_len: dict[int, list[int]] = {}
+    for q in makeable:
+        by_len.setdefault(length[q], []).append(q)
+    if match_lengths:
+        for L, n_products in target["self_products_by_length"].items():
+            chosen = [by_len[L][int(i)] for i in rng.choice(len(by_len[L]), size=n_products, replace=False)]
+            first = [int(rng.choice(making[q])) for q in chosen]          # every product at least once
+            rest = [r for q in chosen for r in making[q] if r not in first]
+            extra = target["self_reactions_by_length"][L] - n_products
+            if extra > len(rest):
+                raise ValueError(f"{n_products} products of length {L} have too few reactions for "
+                                 f"{target['self_reactions_by_length'][L]} self-catalysed ones")
+            for r in first + [rest[int(i)] for i in rng.choice(len(rest), size=extra, replace=False)]:
+                add(product[r], r)
+        wanted = [lens for lens, k in target["pairs_by_lengths"].items() for _ in range(k)]
+    else:
+        for r in rng.choice(n, size=target["self_reactions"], replace=False):
+            add(product[int(r)], int(r))
+        wanted = [None] * target["pairs"]
+    for lens in wanted:
+        while True:
+            if lens is None:
+                a, b = (makeable[int(x)] for x in rng.choice(len(makeable), size=2, replace=False))
+            else:
+                a = by_len[lens[0]][int(rng.integers(len(by_len[lens[0]])))]
+                b = by_len[lens[1]][int(rng.integers(len(by_len[lens[1]])))]
+            if a == b or b in makes.get(a, ()) or a in makes.get(b, ()):
+                continue
+            add(a, int(rng.choice(making[b])))
+            add(b, int(rng.choice(making[a])))
+            break
     left = target["edges"] - sum(len(c) for c in cats)
     if left < 0:
         raise ValueError("the motifs alone need more edges than the network has")

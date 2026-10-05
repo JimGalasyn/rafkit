@@ -24,7 +24,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   keeping every degree; `stratified=True` also keeps the LENGTHS of each reaction's
   templates, which the plain shuffle breaks along with the sequence tie),
   `motif_matched_null` (random catalysis with exactly the network's edge count,
-  self-catalysed reactions and mutual pairs), `matched_f_random` and `matched_f_cbpm`
+  self-catalysed reactions and mutual pairs; `match_lengths=True` plants them at the
+  network's own product and pair lengths, without which it is a second random chemistry
+  with two counts pinned), `matched_f_random` and `matched_f_cbpm`
   (Kauffman's and Serra & Villani's ensembles at the network's catalysis level, in
   expectation). `catalysis_motifs` reports what they are compared on — f, reach, catalysts
   per reaction by product length, self-catalysed reactions and products, mutual pairs, the
