@@ -322,9 +322,10 @@ class TestMotifs:
 class TestGuards:
     """Review of 5a3c5a8 / 14e13f1 (PR 17): the layout, the loops and the edges that were unguarded."""
 
-    def test_an_interleaved_layout_is_refused_not_misread(self):
-        """Every pair-wise consumer reads reaction i with i + n. A network with the right COUNT
-        of cleavages but ligation, cleavage, ligation, ... would union unrelated reactions."""
+    def test_an_interleaved_layout_is_paired_by_its_triples(self):
+        """Every pair-wise consumer reads a pair as (ligation, its cleavage). The standard layout is
+        by position; a designed chemistry storing +1, -1 per reaction is paired by the triple and
+        reads IDENTICALLY -- the same f, the same motifs, the same null degrees."""
         from rafkit.binary_polymer import BinaryPolymerNetwork
         net = templated_polymer(max_len=5)
         n = net.n_reactions // 2
@@ -333,12 +334,32 @@ class TestGuards:
             molecules=net.molecules, food=net.food, reactions=tuple(net.reactions[k] for k in order),
             catalysts=tuple(net.catalysts[k] for k in order), p=net.p, max_len=net.max_len,
             food_len=net.food_len, directions=tuple(net.directions[k] for k in order))
-        assert mixed.n_cleavages == n                      # the count alone would pass
-        for read in (lambda: mixed.n_pairs, lambda: mixed.catalysis_level, lambda: catalysis_motifs(mixed),
-                     lambda: degree_preserving_null(mixed, np.random.default_rng(0))):
-            with pytest.raises(ValueError, match="interleaved"):
-                read()
-        assert net.n_pairs == n and len(net.pair_catalysts()) == n
+        assert mixed.n_pairs == net.n_pairs == n
+        assert mixed.pair_index() == [(2 * i, 2 * i + 1) for i in range(n)]
+        assert mixed.catalysis_level == net.catalysis_level
+        a, b = catalysis_motifs(net), catalysis_motifs(mixed)
+        assert a == b
+        null = degree_preserving_null(mixed, np.random.default_rng(0))
+        assert null.catalysts[0::2] == null.catalysts[1::2]            # the halves still share one set
+        # the same degrees as the standard layout's null from the same seed, read through the pairs
+        ref = degree_preserving_null(net, np.random.default_rng(0))
+        deg = lambda x: sorted(len(x.catalysts[i]) for i, _ in x.pair_index())
+        assert deg(null) == deg(ref) and deg(mixed) == deg(net)
+
+    def test_a_cleavage_without_its_ligation_is_refused(self):
+        from rafkit.binary_polymer import BinaryPolymerNetwork
+        net = templated_polymer(max_len=4)
+        n = net.n_reactions // 2
+        # drop one ligation, keep its cleavage: no triple to pair with
+        keep = [k for k in range(net.n_reactions) if k != 0]
+        orphan = BinaryPolymerNetwork(
+            molecules=net.molecules, food=net.food, reactions=tuple(net.reactions[k] for k in keep),
+            catalysts=tuple(net.catalysts[k] for k in keep), p=net.p, max_len=net.max_len,
+            food_len=net.food_len, directions=tuple(net.directions[k] for k in keep))
+        with pytest.raises(ValueError, match="no ligation to pair"):
+            orphan.n_pairs
+        with pytest.raises(ValueError, match="no ligation to pair"):
+            catalysis_motifs(orphan)
 
     def test_blocked_proposals_are_the_sequential_stream(self):
         from rafkit.templated_polymer import _proposals
