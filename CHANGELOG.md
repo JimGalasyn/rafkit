@@ -10,6 +10,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - v0.7.0's version DOI (`10.5281/zenodo.23193012`) recorded in `CITATION.cff`. Written in the
   same commit as the DOI itself, because this commit lands *after* the release and is therefore
   the first commit of the *next* one -- exactly where `docs/RELEASING.md`'s changelog check looks.
+- README caught up with everything since the v0.6.0 cycle: rows for `complementary_polymer`,
+  `firing_disk_polymer`, `templated_polymer` / `templated_catalysts`, the nulls,
+  `catalysis_motifs` and `to_andl`; a section on the three ways catalysis is assigned and what
+  each null holds fixed, with the `max_len` 7 known answers; and a subsection on the ANDL
+  export under the Petri net section. Docs only (#20).
 
 ## [0.7.0] — 2026-10-06
 
