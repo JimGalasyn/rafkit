@@ -5,6 +5,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-10-06
+
+### Fixed
+
+- The PR 17 layout check refused a lawful layout: a designed chemistry that stores `+1, -1`
+  per reaction (abiogenesis' `design_network`) was read as "interleaved" and `catalysis_level`
+  raised. `BinaryPolymerNetwork.pair_index()` now pairs the standard layout by position and
+  any other by the reaction TRIPLE (a cleavage with the ligation of the same `(a, b, ab)`),
+  refusing only an orphan cleavage or a duplicated triple; `n_pairs`, `pair_catalysts()`,
+  `catalysis_level`, the motifs and every null read through it, identically on both layouts
+  (every null of the complete `max_len` 7 set at seed 0 unchanged to the bit). (#22)
+
 ### Maintenance
 
 - v0.7.0's version DOI (`10.5281/zenodo.23193012`) recorded in `CITATION.cff`. Written in the
@@ -80,16 +92,6 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   same commit as the DOI itself, because this commit lands *after* the release and is therefore
   the first commit of the *next* one — exactly where `docs/RELEASING.md`'s changelog check looks,
   and where it has flagged this same gap on v0.2.0, v0.3.0, v0.4.0 and v0.5.0.
-
-### Fixed
-
-- The PR 17 layout check refused a lawful layout: a designed chemistry that stores `+1, -1`
-  per reaction (abiogenesis' `design_network`) was read as "interleaved" and `catalysis_level`
-  raised. `BinaryPolymerNetwork.pair_index()` now pairs the standard layout by position and
-  any other by the reaction TRIPLE (a cleavage with the ligation of the same `(a, b, ab)`),
-  refusing only an orphan cleavage or a duplicated triple; `n_pairs`, `pair_catalysts()`,
-  `catalysis_level`, the motifs and every null read through it, identically on both layouts
-  (every null of the complete `max_len` 7 set at seed 0 unchanged to the bit).
 
 ### Changed
 
