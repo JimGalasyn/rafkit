@@ -5,6 +5,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Maintenance
+
+- v0.7.1's version DOI (`10.5281/zenodo.23198198`) recorded in `CITATION.cff`, with this line in
+  the same commit, as for v0.7.0.
+
 ## [0.7.1] — 2026-10-06
 
 ### Fixed
