@@ -5,6 +5,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-10-06
+
 ### Added
 
 - **`BinaryPolymerNetwork.n_pairs` and `pair_catalysts()`**: the reversible-pair union
