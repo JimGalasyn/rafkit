@@ -155,11 +155,10 @@ def _edges(net: BinaryPolymerNetwork) -> int:
 def _simple_paired_edges(net: BinaryPolymerNetwork) -> list[tuple[int, int]]:
     """The (template, pair) edges of a network whose catalysis is disjunctive and paired --
     what a rewiring null can preserve. Anything else is refused rather than flattened."""
-    n = _n_pairs(net)
-    for i in range(n):
+    for i, j in net.pair_index():
         if any(len(group) != 1 for group in net.catalysts[i]):
             raise ValueError("a rewiring null needs disjunctive (singleton) catalyst sets")
-        if net.n_cleavages and net.catalysts[i] != net.catalysts[i + n]:
+        if j is not None and net.catalysts[i] != net.catalysts[j]:
             raise ValueError("a rewiring null needs paired catalysis: a ligation and its "
                              "cleavage sharing one catalyst set")
     return [(t, i) for i, c in enumerate(_pair_catalysts(net)) for t in sorted(c)]
@@ -167,10 +166,17 @@ def _simple_paired_edges(net: BinaryPolymerNetwork) -> list[tuple[int, int]]:
 
 def _with_pair_catalysts(net: BinaryPolymerNetwork, cats: Sequence[frozenset[int]]
                          ) -> BinaryPolymerNetwork:
-    drawn = tuple(frozenset(c) for c in cats)
+    """`net` with each reversible pair's catalyst set replaced; the two halves of a pair
+    receive the same set whatever the layout (`pair_index`)."""
+    by_entry = [frozenset()] * net.n_reactions
+    for (i, j), c in zip(net.pair_index(), cats):
+        by_entry[i] = frozenset(c)
+        if j is not None:
+            by_entry[j] = frozenset(c)
+    drawn = tuple(by_entry)
     return BinaryPolymerNetwork(
         molecules=net.molecules, food=net.food, reactions=net.reactions,
-        catalysts=drawn + drawn if net.n_cleavages else drawn, p=net.p, max_len=net.max_len,
+        catalysts=drawn, p=net.p, max_len=net.max_len,
         food_len=net.food_len, directions=net.directions, inhibitors=net.inhibitors)
 
 
@@ -204,7 +210,7 @@ def catalysis_motifs(net: BinaryPolymerNetwork, *, raf: bool = True) -> dict:
     """
     cats = _pair_catalysts(net)
     n = len(cats)
-    product = [net.reactions[i][2] for i in range(n)]
+    product = [net.reactions[i][2] for i, _ in net.pair_index()]
     edges = sum(len(c) for c in cats)
     catalysed = [i for i in range(n) if cats[i]]
     by_len: dict[int, list[int]] = {}
@@ -329,7 +335,7 @@ def motif_matched_null(net: BinaryPolymerNetwork, rng: np.random.Generator, *,
     target = catalysis_motifs(net, raf=False)
     n = _n_pairs(net)
     _simple_paired_edges(net)                               # refuse what cannot be matched
-    product = [net.reactions[i][2] for i in range(n)]
+    product = [net.reactions[i][2] for i, _ in net.pair_index()]
     making: dict[int, list[int]] = {}
     for i, q in enumerate(product):
         making.setdefault(q, []).append(i)

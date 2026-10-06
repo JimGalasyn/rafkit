@@ -102,29 +102,49 @@ class BinaryPolymerNetwork:
     def n_cleavages(self) -> int:
         return sum(1 for d in self.directions if d < 0)
 
+    def pair_index(self) -> list[tuple[int, int | None]]:
+        """The reversible pairs as (ligation entry, cleavage entry or None), ONE source for every
+        pair-wise consumer. The standard layout -- every ligation first, then every cleavage,
+        `i` with `i + n` -- is recognised by position; any other layout (a designed chemistry
+        stores +1, -1 per reaction) is paired by the reaction TRIPLE, a cleavage with the
+        ligation of the same (a, b, ab). Refused: a triple stored twice in one direction, or a
+        cleavage with no ligation -- read with unrelated reactions unioned is the failure this
+        exists to close (review of PR 17)."""
+        n_c = self.n_cleavages
+        n = self.n_reactions - n_c
+        if n_c == 0:
+            return [(i, None) for i in range(self.n_reactions)]
+        if (n_c == n and tuple(self.directions[:n]) == (1,) * n
+                and all(self.reactions[i] == self.reactions[i + n] for i in range(n))):
+            return [(i, i + n) for i in range(n)]
+        lig = {}
+        for i, (trip, d) in enumerate(zip(self.reactions, self.directions)):
+            if d > 0:
+                if trip in lig:
+                    raise ValueError(f"the ligation {trip} is stored twice; reversible pairs are ambiguous")
+                lig[trip] = i
+        out = {i: None for i in lig.values()}
+        for j, (trip, d) in enumerate(zip(self.reactions, self.directions)):
+            if d < 0:
+                if trip not in lig:
+                    raise ValueError(f"the cleavage {trip} (reaction {j}) has no ligation to pair with")
+                if out[lig[trip]] is not None:
+                    raise ValueError(f"the cleavage {trip} is stored twice; reversible pairs are ambiguous")
+                out[lig[trip]] = j
+        return sorted(out.items())
+
     @property
     def n_pairs(self) -> int:
-        """Reversible pairs, under the ONE layout every pair-wise consumer assumes: every
-        ligation first, then (optionally) every cleavage, reaction ``i`` paired with
-        ``i + n``. Refused otherwise -- a network with the right count and interleaved
-        directions would otherwise be read with unrelated reactions unioned."""
-        n = self.n_reactions - self.n_cleavages
-        if self.n_cleavages not in (0, n):
-            raise ValueError("expected every ligation, optionally followed by every cleavage: "
-                             f"{n} ligations and {self.n_cleavages} cleavages")
-        if tuple(self.directions[:n]) != (1,) * n or tuple(self.directions[n:]) != (-1,) * self.n_cleavages:
-            raise ValueError("expected every ligation first, then every cleavage, reaction i "
-                             "paired with i + n; the directions are interleaved")
-        return n
+        """Reversible pairs (a ligation with its cleavage, or a ligation alone)."""
+        return len(self.pair_index())
 
     def pair_catalysts(self) -> list[frozenset]:
         """Per reversible pair, the union of the two directions' catalyst sets (the raw
         conjunctive groups). Under `paired_catalysis` the halves are identical and this is
         each ligation's own set; it differs only where the directions were drawn separately
         -- as in C-BPM, where a catalyst acts on one direction only."""
-        n = self.n_pairs
-        return [self.catalysts[i] | self.catalysts[i + n] if self.n_cleavages else self.catalysts[i]
-                for i in range(n)]
+        return [self.catalysts[i] if j is None else self.catalysts[i] | self.catalysts[j]
+                for i, j in self.pair_index()]
 
     @property
     def catalysis_level(self) -> float:
