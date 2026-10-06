@@ -8,8 +8,9 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21954795.svg)](https://doi.org/10.5281/zenodo.21954795)
 
 Autocatalytic (RAF) sets in catalytic reaction networks — maximal RAFs, irreducible
-cores, Kauffman binary polymer models, and interoperability with
-[CatReNet](https://github.com/husonlab/catrenet).
+cores, binary polymer chemistries whose catalysis is drawn, structured or templated, and
+interoperability with [CatReNet](https://github.com/husonlab/catrenet) and the Petri net
+tools.
 
 Pure Python and NumPy. No Java, no GUI, no install beyond `pip`.
 
@@ -84,10 +85,17 @@ counted as **one** catalysed reaction, not two. Use `net.catalysis_level` — no
 | `is_food_catalysed` | whether a core runs on food catalysis alone, and so carries no heredity |
 | `core_raf` / `has_unique_irraf` | Huson, Xavier & Steel's polynomial test for a *unique* irreducible RAF |
 | `catalytically_reachable` | what can be made without any spontaneous reaction |
-| `binary_polymer` | Kauffman binary polymer generator, with optional cleavage |
+| `binary_polymer` | Kauffman's K-BPM: catalysis by coin flip, with optional cleavage |
+| `complementary_polymer` | Serra & Villani's C-BPM: catalysis by active-site complementarity, not by coin flip |
+| `firing_disk_polymer` | their firing-disk construction — a chemistry *grown* from a seed, closed under its own production |
+| `templated_polymer` / `templated_catalysts` | templated ligation: a species catalyses `a + b -> ab` iff it carries the product's complement — nothing is drawn |
+| `degree_preserving_null` / `motif_matched_null` | same reactions, rewired catalysis — the nulls a structured chemistry is compared against |
+| `matched_f_random` / `matched_f_cbpm` | the K-BPM and C-BPM at a structured chemistry's catalysis level |
+| `catalysis_motifs` | what a chemistry and its nulls are compared on |
 | `ReactionNetwork` | arbitrary catalytic reaction systems, same protocol |
 | `read_crs` / `write_crs` | CatReNet's CRS interchange format |
 | `to_pnml` / `write_pnml` | PNML export (ISO/IEC 15909-2) for the Petri net ecosystem |
+| `to_andl` / `write_andl` | ANDL export with mass-action rate constants — runs unchanged in Spike |
 | `simulate` | Gillespie direct method — watch subRAFs seed themselves into existence |
 | `max_urafs` | uninhibited RAFs, when a molecule can prevent a reaction |
 | `run_serial_dilution` / `run_cstr` | dilution protocols for growing–dividing compartments — **not a RAF algorithm**, see below |
@@ -101,6 +109,67 @@ counted as **one** catalysed reaction, not two. Use `net.catalysis_level` — no
 
 Every algorithm carries hand-computed known-answer tests, because a RAF algorithm that
 is subtly wrong produces plausible numbers rather than errors.
+
+## Catalysis three ways: drawn, structured, and templated
+
+`binary_polymer` is Kauffman's K-BPM: every string up to `max_len` exists, and whether a
+species catalyses a reaction is an independent coin flip at probability `p`. Two more
+ensembles keep that reaction set and change the one thing that matters — *which* catalyst
+catalyses *which* reaction.
+
+**`complementary_polymer`** is Serra & Villani's C-BPM (*Entropy* 28(2), 184, 2026),
+reproduced rather than invented. A catalyst carries an active site — a substring of itself,
+3–4 residues long by default — and acts on whatever is complementary to that site. A K-catalyst's
+targets are independent draws; a C-catalyst's targets all share one template, so they are
+structurally correlated, and Serra & Villani measure the signature of that as a far higher
+and far more irregular reactions-per-catalyst distribution (~400 against ~20).
+**`firing_disk_polymer`** is their other construction. Rather than enumerating every string
+and sprinkling catalysis over the result, it grows the chemistry outward from a small seed,
+so a species exists only if some reaction actually makes it: an enumerated chemistry is
+full of species nothing can reach, and a grown one is closed under its own production by
+construction. ⚠ Food is taken to be the firing disk, an assumption the paper leaves open.
+
+**`templated_polymer`** draws nothing. A species templates the ligation `a + b -> ab`
+exactly when it contains the (reverse) complement of the product — or, under
+`rule="junction"`, of the `2h` residues spanning the junction — given both reactants reach
+the per-side overlap `h`. The catalysis graph is a *function* of the sequence set, which is
+the content of a template world and the reason this generator has no `rng` argument. The
+cleavage carries its ligation's templates, so a template changes a reversible reaction's
+rate and never its equilibrium. `templated_catalysts` is the same rule as a pure function
+over whatever strands exist, for a simulator that holds explicit strands.
+
+Sized on the complete `max_len` 7 set, the two rules behave very differently, and the
+numbers are pinned as known answers:
+
+| | |
+|---|---|
+| junction rule, `h` ≤ 2 | **saturates** — every eligible reaction templated by 194 or 46 species, f = 978 and 142 against ~5 for a random chemistry at the RAF threshold: a uniform speed-up with no specificity left |
+| product rule, `h` 2 | f = 12.9, with the template count *falling* with product length — 46 for a 4-mer, exactly one for a 7-mer, its own complement |
+| either rule, `h` 3 | the **maximal RAF is empty**: templated reactions need reactants of length ≥ `h`, and only untemplated reactions make those from a food set shorter than `h` |
+
+The last row is the one to remember. `max_raf` remains the right question about closure
+and the wrong one about whether templating acts — the chemistry is perfectly runnable on an
+uncatalysed background.
+
+**A structured chemistry needs something to be compared against**, and "random at the same
+f" is a poor choice: at a templated f, a random chemistry spreads its edges over nearly
+every reaction (reach ~0.92 against the product rule's 0.61). So each null holds something
+different fixed, and `catalysis_motifs` reports what they are compared on — f, reach,
+catalysts per reaction by product length, self-catalysed reactions, mutual pairs, and the
+maximal RAF's size, all counted on the reversible pair:
+
+- `degree_preserving_null` — a double-edge-swap chain keeping every degree;
+  `stratified=True` also keeps the *lengths* of each reaction's templates, which the plain
+  shuffle breaks along with the sequence tie.
+- `motif_matched_null` — random catalysis with exactly the network's edge count,
+  self-catalysed reactions and mutual pairs; `match_lengths=True` plants them at the
+  network's own lengths, without which it is a second random chemistry with two counts
+  pinned.
+- `matched_f_random` / `matched_f_cbpm` — the K-BPM and C-BPM at the network's catalysis
+  level, in expectation.
+
+Every one of these returns the same `BinaryPolymerNetwork`, so everything in the table
+above runs on them unchanged.
 
 ## Four modules are deliberately off-theme: `dilution`, `permeation`, `thermo` and `autocatalysis`
 
@@ -356,6 +425,33 @@ Inhibition has no `ptnet` representation and is written as a `toolspecific` anno
 with a warning in the file: a reader that ignores it gets a *different system*.
 Reactions requiring a catalyst that nothing provides are omitted and counted, since
 emitting them unconstrained would make them freely fireable — the opposite of the intent.
+
+### Readable is not runnable: `to_andl`
+
+PNML's `ptnet` grammar has no place for a rate constant, so a PNML file documents a
+network without being able to run it. `to_andl` / `write_andl` export the same network to
+ANDL, the PetriNuts format shared by Snoopy, Spike and Marcie, with mass-action rate
+constants — a complete stochastic Petri net that Spike executes directly. An independently
+developed simulator re-running this chemistry from its definition is the entire point.
+
+The semantics are mass action and nothing else, and they were **measured** against Spike
+1.6.0rc2 rather than read from its documentation: a catalyst is a consume-and-produce
+self-loop, so the propensity scales with catalyst count; alternative catalyst sets are
+separate transitions whose propensities sum; and `a + a -> aa` is a weight-2 arc counted
+as unordered pairs, `n(n−1)/2`, with the alternatives 19–25 standard errors away.
+⚠ Catalysis scaling with catalyst count is *not* what `simulate` does — there any catalyst
+present buys the full rate — so this export runs a different system from the in-library
+simulator, deliberately; the pair convention, on the other hand, is `simulate`'s exactly.
+Rate constants are emitted as named constants, so a Spike `.spc` configuration can override
+any single rate without regenerating the file.
+
+Refused rather than silently altered, because an executable file that drops a feature does
+not *document* a different system, it **runs** one: inhibition (PNML may annotate it, since
+a reader sees the annotation; a simulator would not), and a catalyst that is also a
+reactant of the same reaction, whose self-loop merges with the consuming arc into a
+weight-2 pre-arc with implementation-dependent combinatorics. The latter means a
+`templated_polymer` network, in which a template can be its own reactant, is refused until
+someone measures what Spike does with it.
 
 ## Catalysis is a relation, not a list
 
