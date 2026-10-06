@@ -53,6 +53,9 @@ identifiers:
   - type: doi
     value: 10.5281/zenodo.22059548
     description: Version DOI (v0.6.0)
+  - type: doi
+    value: 10.5281/zenodo.23193012
+    description: Version DOI (v0.7.0)
 references:
   - type: article
     authors:
