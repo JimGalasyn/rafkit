@@ -103,6 +103,30 @@ class BinaryPolymerNetwork:
         return sum(1 for d in self.directions if d < 0)
 
     @property
+    def n_pairs(self) -> int:
+        """Reversible pairs, under the ONE layout every pair-wise consumer assumes: every
+        ligation first, then (optionally) every cleavage, reaction ``i`` paired with
+        ``i + n``. Refused otherwise -- a network with the right count and interleaved
+        directions would otherwise be read with unrelated reactions unioned."""
+        n = self.n_reactions - self.n_cleavages
+        if self.n_cleavages not in (0, n):
+            raise ValueError("expected every ligation, optionally followed by every cleavage: "
+                             f"{n} ligations and {self.n_cleavages} cleavages")
+        if tuple(self.directions[:n]) != (1,) * n or tuple(self.directions[n:]) != (-1,) * self.n_cleavages:
+            raise ValueError("expected every ligation first, then every cleavage, reaction i "
+                             "paired with i + n; the directions are interleaved")
+        return n
+
+    def pair_catalysts(self) -> list[frozenset]:
+        """Per reversible pair, the union of the two directions' catalyst sets (the raw
+        conjunctive groups). Under `paired_catalysis` the halves are identical and this is
+        each ligation's own set; it differs only where the directions were drawn separately
+        -- as in C-BPM, where a catalyst acts on one direction only."""
+        n = self.n_pairs
+        return [self.catalysts[i] | self.catalysts[i + n] if self.n_cleavages else self.catalysts[i]
+                for i in range(n)]
+
+    @property
     def catalysis_level(self) -> float:
         """`f` in the published convention: catalysed reactions per molecule.
 
@@ -115,20 +139,10 @@ class BinaryPolymerNetwork:
         """
         if not self.molecules:
             return 0.0
-        n_pairs = self.n_reactions - self.n_cleavages
         # Counted over the reversible PAIR: a cleavage-ligation pair is one reaction, so
-        # take the union of the two directions' catalysts. Under `paired_catalysis` the
-        # halves are identical and this is exactly the old count; it differs only where
-        # the directions were drawn separately -- as in C-BPM, where a catalyst acts on
-        # one direction only and counting the ligation half alone would miss every
-        # cleavage catalyst.
-        total = 0
-        for i in range(n_pairs):
-            both = self.catalysts[i]
-            if i + n_pairs < self.n_reactions:
-                both = both | self.catalysts[i + n_pairs]
-            total += len(both)
-        return total / len(self.molecules)
+        # the union of the two directions' catalysts (`pair_catalysts`); counting the
+        # ligation half alone would miss every C-BPM cleavage catalyst.
+        return sum(len(both) for both in self.pair_catalysts()) / len(self.molecules)
 
     @property
     def n_inhibiting_molecules(self) -> int:

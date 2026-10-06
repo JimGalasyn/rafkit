@@ -317,3 +317,70 @@ class TestMotifs:
         assert (m["edges"], m["f"], m["reach"], m["per_reaction"], m["self_reactions"],
                 m["pairs"], m["raf_reactions"]) == (0, 0.0, 0.0, 0.0, 0, 0, 0)
         assert m["by_product_length"] == {}
+
+
+class TestGuards:
+    """Review of 5a3c5a8 / 14e13f1 (PR 17): the layout, the loops and the edges that were unguarded."""
+
+    def test_an_interleaved_layout_is_refused_not_misread(self):
+        """Every pair-wise consumer reads reaction i with i + n. A network with the right COUNT
+        of cleavages but ligation, cleavage, ligation, ... would union unrelated reactions."""
+        from rafkit.binary_polymer import BinaryPolymerNetwork
+        net = templated_polymer(max_len=5)
+        n = net.n_reactions // 2
+        order = [k for i in range(n) for k in (i, i + n)]
+        mixed = BinaryPolymerNetwork(
+            molecules=net.molecules, food=net.food, reactions=tuple(net.reactions[k] for k in order),
+            catalysts=tuple(net.catalysts[k] for k in order), p=net.p, max_len=net.max_len,
+            food_len=net.food_len, directions=tuple(net.directions[k] for k in order))
+        assert mixed.n_cleavages == n                      # the count alone would pass
+        for read in (lambda: mixed.n_pairs, lambda: mixed.catalysis_level, lambda: catalysis_motifs(mixed),
+                     lambda: degree_preserving_null(mixed, np.random.default_rng(0))):
+            with pytest.raises(ValueError, match="interleaved"):
+                read()
+        assert net.n_pairs == n and len(net.pair_catalysts()) == n
+
+    def test_blocked_proposals_are_the_sequential_stream(self):
+        from rafkit.templated_polymer import _proposals
+        for n, count in ((3264, 1000), (7, 50)):
+            rng = np.random.default_rng(3)
+            seq = [tuple(int(x) for x in rng.integers(n, size=2)) for _ in range(count)]
+            assert list(_proposals(np.random.default_rng(3), n, count, block=16)) == seq
+        assert list(_proposals(np.random.default_rng(0), 5, 0)) == []
+
+    def test_a_placement_that_cannot_be_made_refuses_instead_of_spinning(self):
+        from rafkit.templated_polymer import _bounded
+        rounds = 0
+        with pytest.raises(ValueError, match="could not plant a pair"):
+            for _ in _bounded(5, "plant a pair"):
+                rounds += 1
+        assert rounds == 5
+
+    def test_motif_matched_terminates_on_the_saturated_junction_network(self):
+        """h = 1 junction rule: every eligible reaction templated by most species; the
+        remainder's rejections were the slow case. Must finish (and keep the motifs)."""
+        sat = templated_polymer(max_len=5, h=1, rule="junction")
+        a = catalysis_motifs(sat, raf=False)
+        b = catalysis_motifs(motif_matched_null(sat, np.random.default_rng(0)), raf=False)
+        assert (b["edges"], b["self_reactions"], b["pairs"]) == (a["edges"], a["self_reactions"], a["pairs"])
+
+    def test_motifs_without_the_raf(self, net):
+        full, cheap = catalysis_motifs(net), catalysis_motifs(net, raf=False)
+        assert "raf_reactions" in full and "raf_reactions" not in cheap
+        assert {k: v for k, v in full.items() if k != "raf_reactions"} == cheap
+
+    def test_matched_f_cbpm_refuses_what_it_cannot_set(self, net):
+        with pytest.raises(ValueError, match="pilots"):
+            matched_f_cbpm(net, np.random.default_rng(0), pilots=0)
+        for k in ("max_len", "food_len"):
+            with pytest.raises(ValueError, match=k):
+                matched_f_cbpm(net, np.random.default_rng(0), **{k: 5})
+        # no species reaches the active site: zero edges at p_cat = 1 is a refusal, not a division
+        with pytest.raises(ValueError, match="site_min"):
+            matched_f_cbpm(net, np.random.default_rng(0), site_min=8, site_max=8)
+
+    def test_templated_catalysts_are_flat_indices_by_declaration(self):
+        net = templated_polymer(max_len=5)
+        raw = templated_catalysts("01", "10", net.molecules)
+        assert all(isinstance(i, int) for i in raw)
+        assert "FLAT" in templated_catalysts.__doc__

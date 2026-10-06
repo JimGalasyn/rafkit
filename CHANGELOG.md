@@ -7,6 +7,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`BinaryPolymerNetwork.n_pairs` and `pair_catalysts()`**: the reversible-pair union
+  (ligation `i` with cleavage `i + n`) in ONE place, serving `catalysis_level` and the
+  templated module's motifs and nulls alike, and checking the LAYOUT, not just the count --
+  a network with every cleavage interleaved is refused rather than read with unrelated
+  reactions unioned (the gap pre-existed in `catalysis_level`). Review of PR 17.
 - **`rafkit.templated_polymer`** (`templated_polymer`, `templated_catalysts`): a third
   binary-polymer ensemble in which NOTHING is drawn — a species templates the ligation
   `a + b -> ab` exactly when it contains the (reverse) complement of the product
@@ -62,6 +67,19 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   same commit as the DOI itself, because this commit lands *after* the release and is therefore
   the first commit of the *next* one — exactly where `docs/RELEASING.md`'s changelog check looks,
   and where it has flagged this same gap on v0.2.0, v0.3.0, v0.4.0 and v0.5.0.
+
+### Changed
+
+- `catalysis_motifs(net, raf=False)` leaves out the one entry that costs a `max_raf`; the
+  nulls use it, so `matched_f_cbpm` no longer runs `max_raf` on each of its pilots.
+- `degree_preserving_null` draws its proposals in blocks: the SAME stream from the same seed
+  (every null of the complete `max_len` 7 set identical to the bit before and after), about
+  three times faster.
+- `motif_matched_null` refuses (`ValueError`) after a bounded number of rejected proposals
+  where it could spin; `matched_f_cbpm` refuses `pilots < 1`, `max_len` / `food_len` in its
+  C-BPM keywords, and a C-BPM that makes no edge at `p_cat = 1`, each by name.
+- `templated_catalysts` says its indices are FLAT and how `is_catalysed` wants them wrapped;
+  `catalysis_motifs`' `pairs` says it counts ligation products only.
 
 ## [0.6.0] — 2026-08-22
 

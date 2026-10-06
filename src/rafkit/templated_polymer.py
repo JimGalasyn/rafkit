@@ -41,6 +41,7 @@ catalysis graph, each holding something different fixed -- see their docstrings,
 """
 from __future__ import annotations
 
+from collections import Counter
 from typing import Callable, Sequence
 
 import numpy as np
@@ -76,7 +77,9 @@ def templated_catalysts(left: str, right: str, species: Sequence[str], *, h: int
 
     The rule itself, as a pure function over whatever strands EXIST -- so a simulator
     holding explicit strands and `templated_polymer` holding the complete set apply the
-    same rule by construction rather than by re-implementation.
+    same rule by construction rather than by re-implementation. ⚠ These are FLAT molecule
+    indices; the network stores conjunctive GROUPS, so `is_catalysed` and the network's
+    ``catalysts`` want each wrapped: ``frozenset(frozenset({i}) for i in ...)``.
     """
     target = _target(left, right, h, orientation, rule)
     if target is None:
@@ -134,23 +137,19 @@ def templated_polymer(max_len: int = 7, food_len: int = 2, *, h: int = 2,
 # --- the catalysis graph, on the reversible PAIR ------------------------------------------------
 
 def _n_pairs(net: BinaryPolymerNetwork) -> int:
-    n = net.n_reactions - net.n_cleavages
-    if net.n_cleavages not in (0, n):
-        raise ValueError("expected every ligation, optionally followed by every cleavage: "
-                         f"{n} ligations and {net.n_cleavages} cleavages")
-    return n
+    return net.n_pairs                      # the layout check lives on the network
 
 
 def _pair_catalysts(net: BinaryPolymerNetwork) -> list[frozenset[int]]:
-    """Per reversible pair, the molecules catalysing either direction."""
-    n = _n_pairs(net)
-    out = []
-    for i in range(n):
-        both = catalysing_molecules(net.catalysts[i])
-        if net.n_cleavages:
-            both = both | catalysing_molecules(net.catalysts[i + n])
-        out.append(both)
-    return out
+    """Per reversible pair, the molecules catalysing either direction (the network's
+    `pair_catalysts`, flattened from groups to molecules)."""
+    return [catalysing_molecules(c) for c in net.pair_catalysts()]
+
+
+def _edges(net: BinaryPolymerNetwork) -> int:
+    """The (molecule, pair) edge count alone -- what the matched-f nulls need, without the
+    maximal RAF `catalysis_motifs` also computes."""
+    return sum(len(c) for c in _pair_catalysts(net))
 
 
 def _simple_paired_edges(net: BinaryPolymerNetwork) -> list[tuple[int, int]]:
@@ -175,9 +174,10 @@ def _with_pair_catalysts(net: BinaryPolymerNetwork, cats: Sequence[frozenset[int
         food_len=net.food_len, directions=net.directions, inhibitors=net.inhibitors)
 
 
-def catalysis_motifs(net: BinaryPolymerNetwork) -> dict:
+def catalysis_motifs(net: BinaryPolymerNetwork, *, raf: bool = True) -> dict:
     """What a templated chemistry and its nulls are compared on, counted on the reversible
     pair (a ligation and its cleavage are ONE reaction, as in `catalysis_level`).
+    ``raf=False`` leaves out ``raf_reactions``, the one entry that costs a `max_raf`.
 
     ==========================  ==========================================================
     ``edges``                   (molecule, pair) catalysis edges
@@ -188,7 +188,8 @@ def catalysis_motifs(net: BinaryPolymerNetwork) -> dict:
     ``self_reactions``          pairs catalysed by their own ligation product
     ``self_products``           distinct products among those -- the direct autocatalysts
     ``pairs``                   unordered pairs of distinct molecules, each catalysing
-                                some reaction that MAKES the other
+                                some reaction whose LIGATION PRODUCT is the other (the
+                                cleavage half's reactants are not counted as made)
     ``raf_reactions``           size of the maximal RAF (both directions counted)
     ``self_reactions_by_length``, ``self_products_by_length``
                                 the two self counts by the product's length
@@ -210,7 +211,7 @@ def catalysis_motifs(net: BinaryPolymerNetwork) -> dict:
     for i in catalysed:
         by_len.setdefault(len(net.molecules[product[i]]), []).append(len(cats[i]))
     selfs = [i for i in catalysed if product[i] in cats[i]]
-    makes: dict[int, set[int]] = {}                    # molecule -> the products it helps make
+    makes: dict[int, set[int]] = {}                    # molecule -> the ligation products it helps make
     for i in catalysed:
         for t in cats[i]:
             makes.setdefault(t, set()).add(product[i])
@@ -219,23 +220,44 @@ def catalysis_motifs(net: BinaryPolymerNetwork) -> dict:
     length = [len(m) for m in net.molecules]
 
     def tally(keys):
-        out: dict = {}
-        for k in keys:
-            out[k] = out.get(k, 0) + 1
-        return dict(sorted(out.items()))
+        return dict(sorted(Counter(keys).items()))
     return dict(
         edges=edges, f=edges / net.n_molecules if net.n_molecules else 0.0,
         reach=len(catalysed) / n if n else 0.0,
         per_reaction=edges / len(catalysed) if catalysed else 0.0,
         by_product_length={L: float(np.mean(v)) for L, v in sorted(by_len.items())},
         self_reactions=len(selfs), self_products=len({product[i] for i in selfs}),
-        pairs=pairs, raf_reactions=max_raf(net).size,
+        pairs=pairs, **({"raf_reactions": max_raf(net).size} if raf else {}),
         self_reactions_by_length=tally(length[product[i]] for i in selfs),
         self_products_by_length=tally(length[q] for q in {product[i] for i in selfs}),
         pairs_by_lengths=tally(tuple(sorted((length[t], length[q]))) for t, q in mutual))
 
 
 # --- the nulls ----------------------------------------------------------------------------------
+
+_BLOCK = 1 << 14
+_TRIES = 10_000                 # rejections allowed per placement before the null refuses
+
+
+def _proposals(rng: np.random.Generator, n: int, count: int, block: int = _BLOCK):
+    """``count`` index pairs below ``n``, drawn in blocks: the SAME stream as ``count`` calls of
+    ``rng.integers(n, size=2)`` from the same state (the bounded draw is per element), at a
+    fraction of the cost -- one numpy call per proposal was the whole running time."""
+    done = 0
+    while done < count:
+        for i, j in rng.integers(n, size=(min(block, count - done), 2)).tolist():
+            yield i, j
+        done += block
+
+
+def _bounded(tries: int, what: str):
+    """Yield up to ``tries`` times, then refuse: a rejection loop that cannot be satisfied
+    reports it instead of spinning."""
+    for _ in range(tries):
+        yield
+    raise ValueError(f"could not {what} in {tries} proposals: the motif counts cannot be "
+                     "planted on this network's reactions")
+
 
 def degree_preserving_null(net: BinaryPolymerNetwork, rng: np.random.Generator, *,
                            stratified: bool = False, swaps_per_edge: int = 20
@@ -263,8 +285,7 @@ def degree_preserving_null(net: BinaryPolymerNetwork, rng: np.random.Generator, 
     edges = _simple_paired_edges(net)
     have, n = set(edges), len(edges)
     length = [len(m) for m in net.molecules]
-    for _ in range(swaps_per_edge * n if n > 1 else 0):
-        i, j = (int(x) for x in rng.integers(n, size=2))
+    for i, j in _proposals(rng, n, swaps_per_edge * n if n > 1 else 0):
         (t1, r1), (t2, r2) = edges[i], edges[j]
         if t1 == t2 or r1 == r2 or (t1, r2) in have or (t2, r1) in have:
             continue
@@ -305,7 +326,7 @@ def motif_matched_null(net: BinaryPolymerNetwork, rng: np.random.Generator, *,
     not motif-free: at f ~ 13 on 254 species it carries some 80 mutual pairs by chance,
     which is why the remainder is constrained rather than left to add its own.)
     """
-    target = catalysis_motifs(net)
+    target = catalysis_motifs(net, raf=False)
     n = _n_pairs(net)
     _simple_paired_edges(net)                               # refuse what cannot be matched
     product = [net.reactions[i][2] for i in range(n)]
@@ -341,7 +362,7 @@ def motif_matched_null(net: BinaryPolymerNetwork, rng: np.random.Generator, *,
             add(product[int(r)], int(r))
         wanted = [None] * target["pairs"]
     for lens in wanted:
-        while True:
+        for _ in _bounded(_TRIES, f"place a mutual pair of lengths {lens}"):
             if lens is None:
                 a, b = (makeable[int(x)] for x in rng.choice(len(makeable), size=2, replace=False))
             else:
@@ -355,7 +376,9 @@ def motif_matched_null(net: BinaryPolymerNetwork, rng: np.random.Generator, *,
     left = target["edges"] - sum(len(c) for c in cats)
     if left < 0:
         raise ValueError("the motifs alone need more edges than the network has")
+    tries = _bounded(_TRIES * max(left, 1), f"place the remaining {left} edges")
     while left:
+        next(tries)
         t, r = int(rng.integers(net.n_molecules)), int(rng.integers(n))
         q = product[r]
         if t in cats[r] or t == q:
@@ -384,7 +407,7 @@ def matched_f_random(net: BinaryPolymerNetwork, rng: np.random.Generator
     product-rule chemistry's 0.61 at ``max_len`` 7).
     """
     _is_complete_bpm(net)
-    edges = catalysis_motifs(net)["edges"]
+    edges = _edges(net)
     p = edges / (net.n_molecules * _n_pairs(net))
     return binary_polymer(max_len=net.max_len, food_len=net.food_len, p=p, rng=rng,
                           cleavage=True, paired_catalysis=True)
@@ -403,13 +426,16 @@ def matched_f_cbpm(net: BinaryPolymerNetwork, rng: np.random.Generator, *,
     pair's (either direction), as in `catalysis_level`.
     """
     _is_complete_bpm(net)
-    if "p_cat" in cbpm:
-        raise ValueError("p_cat is what this function sets")
-    edges = catalysis_motifs(net)["edges"]
-    full = np.mean([catalysis_motifs(complementary_polymer(
-        max_len=net.max_len, food_len=net.food_len, p_cat=1.0, rng=rng, **cbpm))["edges"]
-        for _ in range(pilots)])
+    for k in ("p_cat", "max_len", "food_len"):
+        if k in cbpm:
+            raise ValueError(f"{k} is set from `net`, not passed" if k != "p_cat" else "p_cat is what this function sets")
+    if pilots < 1:
+        raise ValueError(f"p_cat is set from the mean of `pilots` >= 1 chemistries, got {pilots}")
+    edges = _edges(net)
+    full = float(np.mean([_edges(complementary_polymer(
+        max_len=net.max_len, food_len=net.food_len, p_cat=1.0, rng=rng, **cbpm)) for _ in range(pilots)]))
     if edges > full:
-        raise ValueError(f"C-BPM reaches {full:.0f} edges at p_cat = 1; {edges} asked")
+        raise ValueError(f"C-BPM reaches {full:.0f} edges at p_cat = 1 under {cbpm or 'its defaults'}; "
+                         f"{edges} asked" + (" (no species reaches site_min)" if full == 0 else ""))
     return complementary_polymer(max_len=net.max_len, food_len=net.food_len,
                                  p_cat=edges / full, rng=rng, **cbpm)
