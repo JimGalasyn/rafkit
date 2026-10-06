@@ -7,6 +7,36 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`BinaryPolymerNetwork.n_pairs` and `pair_catalysts()`**: the reversible-pair union
+  (ligation `i` with cleavage `i + n`) in ONE place, serving `catalysis_level` and the
+  templated module's motifs and nulls alike, and checking the LAYOUT, not just the count --
+  a network with every cleavage interleaved is refused rather than read with unrelated
+  reactions unioned (the gap pre-existed in `catalysis_level`). Review of PR 17.
+- **`rafkit.templated_polymer`** (`templated_polymer`, `templated_catalysts`): a third
+  binary-polymer ensemble in which NOTHING is drawn — a species templates the ligation
+  `a + b -> ab` exactly when it contains the (reverse) complement of the product
+  (`rule="product"`, the default) or of the `2h` residues spanning the junction
+  (`rule="junction"`), given both reactants reach the per-side overlap `h`. Same molecules,
+  reactions and paired cleavage layout as `binary_polymer(cleavage=True)`, so every consumer
+  is unchanged. `templated_catalysts` is the rule as a pure function over whatever strands
+  exist, for a simulator that holds explicit strands. Sized on the complete `max_len` 7 set
+  and pinned as known answers: the junction rule SATURATES at `h` ≤ 2 (f = 978 and 142 —
+  every eligible reaction templated by 194 or 46 species, no specificity); the product rule
+  gives f = 12.9 at `h` 2 with a template count falling from 46 (4-mers) to 1 (7-mers); and
+  at `h` 3 the maximal RAF is empty under either rule, because templated reactions need
+  reactants only the uncatalysed background makes from a food set shorter than `h`.
+- **Nulls for a structured chemistry**: `degree_preserving_null` (a double-edge-swap chain
+  keeping every degree; `stratified=True` also keeps the LENGTHS of each reaction's
+  templates, which the plain shuffle breaks along with the sequence tie),
+  `motif_matched_null` (random catalysis with exactly the network's edge count,
+  self-catalysed reactions and mutual pairs; `match_lengths=True` plants them at the
+  network's own product and pair lengths, without which it is a second random chemistry
+  with two counts pinned), `matched_f_random` and `matched_f_cbpm`
+  (Kauffman's and Serra & Villani's ensembles at the network's catalysis level, in
+  expectation). `catalysis_motifs` reports what they are compared on — f, reach, catalysts
+  per reaction by product length, self-catalysed reactions and products, mutual pairs, the
+  maximal RAF's size — counted on the reversible pair, as `catalysis_level` is.
+
 - **`rafkit.andl`** (`to_andl`, `write_andl`): export a network plus mass-action rate
   constants to ANDL, the PetriNuts framework's executable Petri net format — where
   `rafkit.pnml` makes a network *readable* by the Petri net ecosystem, this makes it
@@ -37,6 +67,19 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   same commit as the DOI itself, because this commit lands *after* the release and is therefore
   the first commit of the *next* one — exactly where `docs/RELEASING.md`'s changelog check looks,
   and where it has flagged this same gap on v0.2.0, v0.3.0, v0.4.0 and v0.5.0.
+
+### Changed
+
+- `catalysis_motifs(net, raf=False)` leaves out the one entry that costs a `max_raf`; the
+  nulls use it, so `matched_f_cbpm` no longer runs `max_raf` on each of its pilots.
+- `degree_preserving_null` draws its proposals in blocks: the SAME stream from the same seed
+  (every null of the complete `max_len` 7 set identical to the bit before and after), about
+  three times faster.
+- `motif_matched_null` refuses (`ValueError`) after a bounded number of rejected proposals
+  where it could spin; `matched_f_cbpm` refuses `pilots < 1`, `max_len` / `food_len` in its
+  C-BPM keywords, and a C-BPM that makes no edge at `p_cat = 1`, each by name.
+- `templated_catalysts` says its indices are FLAT and how `is_catalysed` wants them wrapped;
+  `catalysis_motifs`' `pairs` says it counts ligation products only.
 
 ## [0.6.0] — 2026-08-22
 
