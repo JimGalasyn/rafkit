@@ -119,10 +119,10 @@ catalyses *which* reaction.
 
 **`complementary_polymer`** is Serra & Villani's C-BPM (*Entropy* 28(2), 184, 2026),
 reproduced rather than invented. A catalyst carries an active site — a substring of itself,
-3–4 residues long by default — and acts on whatever is complementary to that site. A K-catalyst's
-targets are independent draws; a C-catalyst's targets all share one template, so they are
-structurally correlated, and Serra & Villani measure the signature of that as a far higher
-and far more irregular reactions-per-catalyst distribution (~400 against ~20).
+3–4 residues long by default — and acts on whatever is complementary to that site. A
+K-catalyst's targets are independent draws; a C-catalyst's targets all share one template,
+so they are structurally correlated, and Serra & Villani measure the signature of that as a
+far higher and far more irregular reactions-per-catalyst distribution (~400 against ~20).
 **`firing_disk_polymer`** is their other construction. Rather than enumerating every string
 and sprinkling catalysis over the result, it grows the chemistry outward from a small seed,
 so a species exists only if some reaction actually makes it: an enumerated chemistry is
