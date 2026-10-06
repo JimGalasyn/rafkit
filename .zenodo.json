@@ -11,9 +11,8 @@
       "name": "Théodore, Claude"
     }
   ],
-  "description": "Maximal RAFs, strictly autocatalytic RAFs, irreducible-RAF sampling and census, exploitability, uninhibited RAFs (u-RAFs), and Gillespie simulation of catalytic reaction networks. Three binary-polymer generators: Kauffman's K-BPM with optional cleavage and generated inhibition; Serra &amp; Villani's C-BPM, where catalysis follows active-site complementarity rather than a coin flip; and their firing-disk construction, which grows a chemistry closed under its own production instead of enumerating one. Four modules are deliberately off that theme, each because it is a modelling choice that changes the answer: dilution reproduces the closed-form serial-dilution and CSTR conditions of Matsubara et al.; permeation implements size-selective membrane transport as a concentration difference rather than a count difference; thermo supplies bond energies and the rate constants they force, making catalysis a ratio applied to both directions so that detailed balance holds by construction rather than by assumption; and autocatalysis decides the thermodynamic consistency of autocatalytic cycles after Kosc et al. (PNAS 2025), which gives the library an external pass/fail anchor. Hand-computed known-answer tests throughout, regression tests against CatReNet's own output on a committed fixture, and worked examples reproducing published results. Reads and writes the CRS interchange format and exports PNML.",
+  "description": "Maximal RAFs, strictly autocatalytic RAFs, irreducible-RAF sampling and census, exploitability, uninhibited RAFs (u-RAFs), and Gillespie simulation of catalytic reaction networks. Binary-polymer generators: Kauffman's K-BPM with optional cleavage and generated inhibition; Serra &amp; Villani's C-BPM, where catalysis follows active-site complementarity rather than a coin flip; a templated ensemble in which nothing is drawn, where a species catalyses a ligation exactly when it contains the complement of the product or of the residues spanning the junction, shipped with the nulls a structured chemistry is compared against (degree-preserving and motif-matched shuffles, and the K-BPM and C-BPM at the same catalysis level); and the firing-disk construction, which grows a chemistry closed under its own production instead of enumerating one. Four modules are deliberately off that theme, each because it is a modelling choice that changes the answer: dilution reproduces the closed-form serial-dilution and CSTR conditions of Matsubara et al.; permeation implements size-selective membrane transport as a concentration difference rather than a count difference; thermo supplies bond energies and the rate constants they force, making catalysis a ratio applied to both directions so that detailed balance holds by construction rather than by assumption; and autocatalysis decides the thermodynamic consistency of autocatalytic cycles after Kosc et al. (PNAS 2025), which gives the library an external pass/fail anchor. Hand-computed known-answer tests throughout, regression tests against CatReNet's own output on a committed fixture, and worked examples reproducing published results. Reads and writes the CRS interchange format, exports PNML for the Petri net ecosystem, and exports ANDL with mass-action rate constants so a network runs unchanged in Spike, an independently developed stochastic simulator, with the semantics calibrated against Spike by measurement.",
   "keywords": [
-    "RAF",
     "abiogenesis",
     "autocatalytic-sets",
     "binary-polymer-model",
@@ -22,11 +21,16 @@
     "chemical-reaction-networks",
     "detailed-balance",
     "non-equilibrium",
+    "null-models",
     "origin-of-life",
+    "petri-nets",
     "protocells",
+    "RAF",
+    "stochastic-simulation",
     "stoichiometric-autocatalysis",
     "systems-chemistry",
     "template-based-catalysis",
+    "templated-ligation",
     "thermodynamics"
   ]
 }
