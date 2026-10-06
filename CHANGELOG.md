@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Maintenance
+
+- v0.7.0's version DOI (`10.5281/zenodo.23193012`) recorded in `CITATION.cff`. Written in the
+  same commit as the DOI itself, because this commit lands *after* the release and is therefore
+  the first commit of the *next* one -- exactly where `docs/RELEASING.md`'s changelog check looks.
+
 ## [0.7.0] — 2026-10-06
 
 ### Added
