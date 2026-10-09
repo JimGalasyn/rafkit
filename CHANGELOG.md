@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Maintenance
+
+- v0.8.0's version DOI (`10.5281/zenodo.23269086`) recorded in `CITATION.cff`, with this line in
+  the same commit, as for v0.7.0 and v0.7.1.
+
 ## [0.8.0] — 2026-10-09
 
 ### Added
