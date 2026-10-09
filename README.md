@@ -565,6 +565,19 @@ CatReNet too.
 - Matsubara, Ameta, Thutupalli, Nghe & Krishna, "Conditions for Darwinian evolution in
   compartmentalized autocatalytic reaction networks," arXiv:2211.03155 — the analytic
   benchmark behind `rafkit.dilution`.
+- Kauffman, "Autocatalytic sets of proteins," *J. Theor. Biol.* 119(1), 1 (1986) — the
+  binary polymer model behind `binary_polymer`.
+- Gillespie, "Exact stochastic simulation of coupled chemical reactions," *J. Phys. Chem.*
+  81(25), 2340 (1977) — the direct method behind `rafkit.gillespie`.
+- Hordijk, Naylor, Krasnogor & Fellermann, "Population Dynamics of Autocatalytic Sets in a
+  Compartmentalized Spatial World," *Life* 8(3), 33 (2018) — the transport rule behind
+  `rafkit.permeation`.
+- Kosc, Kuperberg, Rajon & Charlat, "Thermodynamic consistency of autocatalytic cycles,"
+  *PNAS* 122(18), e2421274122 (2025) — the external pass/fail anchor behind
+  `rafkit.autocatalysis`.
+- Chodak & Heiner, "Spike — Reproducible Simulation Experiments with Configuration File
+  Branching," *Computational Methods in Systems Biology* (CMSB 2019), LNCS 11773 — the
+  simulator `to_andl` is calibrated against.
 
 ## License
 

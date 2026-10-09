@@ -22,8 +22,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   the same commit, as for v0.7.0.
 - README: the error channel in the templated section (the rule, the superset property, the
   penalty being the consumer's, the missing distance) and in the module table; the product
-  rule's known-answer row marked as the `mismatch` 0 profile with the flattened f at 1 / 2.
-  Release commit for v0.8.0.
+  rule's known-answer row marked as the `mismatch` 0 profile with the flattened f at 1 / 2;
+  the References section caught up with the five works the modules cite and it lacked
+  (Kauffman 1986, Gillespie 1977, Hordijk et al. 2018, Kosc et al. 2025, Chodak & Heiner
+  2019). Release commit for v0.8.0.
 
 ## [0.7.1] — 2026-10-06
 
