@@ -405,3 +405,68 @@ class TestGuards:
         raw = templated_catalysts("01", "10", net.molecules)
         assert all(isinstance(i, int) for i in raw)
         assert "FLAT" in templated_catalysts.__doc__
+
+
+# --- the error channel (mismatch) --------------------------------------------------------------
+
+def test_mismatch_zero_is_the_exact_rule():
+    from rafkit.templated_polymer import templated_polymer
+    a, b = templated_polymer(max_len=6), templated_polymer(max_len=6, mismatch=0)
+    assert a.catalysts == b.catalysts and a.reactions == b.reactions
+
+
+def test_mismatch_is_a_superset_and_grows():
+    from rafkit.templated_polymer import templated_polymer
+    from rafkit.catalysis import catalysing_molecules
+    n0, n1, n2 = (templated_polymer(max_len=6, mismatch=k) for k in (0, 1, 2))
+    c0 = [catalysing_molecules(c) for c in n0.catalysts]
+    c1 = [catalysing_molecules(c) for c in n1.catalysts]
+    c2 = [catalysing_molecules(c) for c in n2.catalysts]
+    assert all(x <= y for x, y in zip(c0, c1)) and all(x <= y for x, y in zip(c1, c2))
+    assert sum(len(c) for c in c1) > sum(len(c) for c in c0)
+    assert sum(len(c) for c in c2) > sum(len(c) for c in c1)
+
+
+def test_mismatch_one_templates_a_one_base_variant_of_the_partner():
+    """0011011 is the reverse complement of 0010011, so it templates 0010011 exactly; with one
+    mismatch it also templates 1010011 (one position flipped), and nothing two away."""
+    from rafkit.templated_polymer import templated_catalysts
+    species = ("0011011", "0010011")
+    assert templated_catalysts("0010", "011", species) == frozenset({0})
+    assert templated_catalysts("1010", "011", species) == frozenset()
+    assert templated_catalysts("1010", "011", species, mismatch=1) == frozenset({0})
+    assert templated_catalysts("1110", "011", species, mismatch=1) == frozenset()
+    assert templated_catalysts("1110", "011", species, mismatch=2) == frozenset({0})
+
+
+def test_mismatch_pure_function_agrees_with_the_network():
+    from rafkit.templated_polymer import templated_polymer, templated_catalysts
+    from rafkit.catalysis import catalysing_molecules
+    net = templated_polymer(max_len=5, mismatch=1)
+    for r in range(net.n_pairs):
+        a, b = (net.molecules[i] for i in net.reactants(r))
+        assert catalysing_molecules(net.catalysts[r]) == templated_catalysts(a, b, net.molecules, mismatch=1)
+
+
+def test_mismatch_negative_refused():
+    import pytest
+    from rafkit.templated_polymer import templated_polymer
+    with pytest.raises(ValueError, match="mispaired"):
+        templated_polymer(max_len=4, mismatch=-1)
+
+
+def test_mismatch_validated_before_eligibility():
+    """PR 25 review, defect 1: a bad ``mismatch`` once raised only on the ELIGIBLE path, so
+    an ineligible reaction (or a network with no eligible pair) accepted it silently; a
+    float raised TypeError from ``range``; a bool was taken as 0 or 1."""
+    import pytest
+    from rafkit.templated_polymer import templated_catalysts, templated_polymer
+    with pytest.raises(ValueError, match="mispaired"):
+        templated_catalysts("0", "0", ["00", "11"], mismatch=-1)         # ineligible at h 2
+    with pytest.raises(ValueError, match="mispaired"):
+        templated_polymer(max_len=4, h=3, mismatch=-1)                  # no eligible pair
+    for bad in (1.5, 1.0, True, False, "1", None):
+        with pytest.raises(ValueError, match="mispaired"):
+            templated_catalysts("00", "11", ["0011", "1100"], mismatch=bad)
+    # target rc("0011") = "0011"; "0111" is one off it, "1100" four off
+    assert templated_catalysts("00", "11", ["0011", "1100", "0111"], mismatch=1) == frozenset({0, 2})

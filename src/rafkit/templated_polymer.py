@@ -9,7 +9,8 @@ world, and the reason this ensemble has no ``rng`` argument.
 **The rule.** Under an orientation ``f`` -- ``antiparallel``, the reverse complement, or
 ``parallel``, the plain complement -- a species ``t`` templates ``a + b -> ab`` iff both
 reactants reach the per-side overlap, ``len(a) >= h`` and ``len(b) >= h``, and ``t``
-contains
+contains (exactly at ``mismatch`` 0, the default; within Hamming distance ``mismatch``
+otherwise -- the ERROR CHANNEL, see `templated_catalysts`)
 
 * ``rule="product"``: ``f(ab)``, the complement of the whole product;
 * ``rule="junction"``: ``f(a[-h:] + b[:h])``, the ``2h`` residues spanning the junction.
@@ -26,7 +27,11 @@ the number of superstrings up to ``max_len``, 46 for a 4-mer down to exactly one
 7-mer, its own (reverse) complement -- and f is 12.9 at ``h`` 2. ``"product"`` is the
 default for that reason. ⚠ That profile is set by ``max_len - len(ab)`` (to the few
 self-overlapping targets that have fewer superstrings): its endpoint is the truncation's,
-not chemistry's.
+not chemistry's. ⚠ And it is the ``mismatch`` 0 profile: the error channel flattens it
+fast (at ``h`` 2, ``max_len`` 7: the 7-mer's one template becomes 8 at ``mismatch`` 1 and
+29 at 2, f 12.9 -> 73.9 -> 188.8, 5.7x the catalysis edges at 1), while eligibility and so
+``reach`` do not move. The channel's smallness is entirely the consumer's penalty factor;
+none of it is in the graph.
 
 **What the RAF framing does and does not say here.** A templated reaction needs
 reactants of length ``>= h``, and only UNTEMPLATED reactions make those from a food set
@@ -55,14 +60,19 @@ ORIENTATIONS = ("antiparallel", "parallel")
 RULES = ("product", "junction")
 
 
-def _target(left: str, right: str, h: int, orientation: str, rule: str) -> str | None:
-    """What a template of ``left + right -> left right`` must contain; None if ineligible."""
+def _target(left: str, right: str, h: int, orientation: str, rule: str,
+            mismatch: int = 0) -> str | None:
+    """What a template of ``left + right -> left right`` must contain; None if ineligible.
+    Every argument is validated HERE, before eligibility, so a bad value raises on an
+    ineligible reaction too (``mismatch`` once did not: PR 25 review, defect 1)."""
     if h < 1:
         raise ValueError(f"h is a per-side overlap of at least 1, got {h}")
     if orientation not in ORIENTATIONS:
         raise ValueError(f"orientation must be one of {ORIENTATIONS}, got {orientation!r}")
     if rule not in RULES:
         raise ValueError(f"rule must be one of {RULES}, got {rule!r}")
+    if isinstance(mismatch, bool) or not isinstance(mismatch, (int, np.integer)) or mismatch < 0:
+        raise ValueError(f"mismatch is a count of mispaired positions, got {mismatch!r}")
     if len(left) < h or len(right) < h:
         return None
     window = left + right if rule == "product" else left[-h:] + right[:h]
@@ -70,9 +80,25 @@ def _target(left: str, right: str, h: int, orientation: str, rule: str) -> str |
     return paired[::-1] if orientation == "antiparallel" else paired
 
 
+def _variants(target: str, mismatch: int) -> frozenset[str]:
+    """Every string within Hamming distance ``mismatch`` of ``target`` (``target`` itself at 0):
+    THE ERROR CHANNEL. A template that contains one of these contains the product's complement
+    up to ``mismatch`` mispaired positions, anywhere in the window."""
+    out = {target}
+    frontier = {target}
+    for _ in range(mismatch):
+        nxt = set()
+        for t in frontier:
+            for i, c in enumerate(t):
+                nxt.add(t[:i] + ("1" if c == "0" else "0") + t[i + 1:])
+        frontier = nxt - out
+        out |= nxt
+    return frozenset(out)
+
+
 def templated_catalysts(left: str, right: str, species: Sequence[str], *, h: int = 2,
                         orientation: str = "antiparallel",
-                        rule: str = "product") -> frozenset[int]:
+                        rule: str = "product", mismatch: int = 0) -> frozenset[int]:
     """Indices into `species` of the strands that template ``left + right -> left right``.
 
     The rule itself, as a pure function over whatever strands EXIST -- so a simulator
@@ -80,23 +106,39 @@ def templated_catalysts(left: str, right: str, species: Sequence[str], *, h: int
     same rule by construction rather than by re-implementation. ⚠ These are FLAT molecule
     indices; the network stores conjunctive GROUPS, so `is_catalysed` and the network's
     ``catalysts`` want each wrapped: ``frozenset(frozenset({i}) for i in ...)``.
+
+    ``mismatch`` (the ERROR CHANNEL, default 0 = the exact rule, bit-identical): a strand
+    templates the ligation if it contains a string within Hamming distance ``mismatch`` of
+    the target, i.e. the product's complement with up to that many mispaired positions
+    anywhere in the window. The penalty for a mispaired template is not the rule's
+    business: a consumer that wants one takes the exact set and this set and weights the
+    difference (`abiogenesis` runs the mismatched-only edges at a reduced enhancement).
+    ⚠ The returned set carries no distance: at ``mismatch`` 2 a template one position off
+    and one two positions off are indistinguishable. A per-shell penalty takes the sets at
+    each k and differences them.
     """
-    target = _target(left, right, h, orientation, rule)
+    target = _target(left, right, h, orientation, rule, mismatch)
     if target is None:
         return frozenset()
-    return frozenset(i for i, t in enumerate(species) if target in t)
+    variants = _variants(target, mismatch)
+    return frozenset(i for i, t in enumerate(species) if any(v in t for v in variants))
 
 
 def templated_polymer(max_len: int = 7, food_len: int = 2, *, h: int = 2,
                       orientation: str = "antiparallel", rule: str = "product",
-                      template_class: Callable[[str], bool] | None = None
-                      ) -> BinaryPolymerNetwork:
+                      template_class: Callable[[str], bool] | None = None,
+                      mismatch: int = 0) -> BinaryPolymerNetwork:
     """The complete binary-polymer chemistry with templated catalysis. Deterministic.
 
     Same molecules, reactions and layout as ``binary_polymer(cleavage=True)`` -- every
     ligation, then every cleavage -- so `max_raf` and every other consumer is unchanged;
     only the catalysts differ. ``template_class`` restricts which species may template
     (None: all); a class with no member leaves the network uncatalysed.
+
+    ``mismatch`` (default 0: the exact rule, every network to date bit-identical) is the
+    ERROR CHANNEL of `templated_catalysts`: a template may mispair up to that many positions
+    anywhere in the window. The network at ``mismatch`` k is a SUPERSET of the one at k - 1
+    (every catalyst set contains the smaller one); the penalty is the consumer's.
 
     ``p`` is recorded as 0.0: there is no catalysis probability. Use `catalysis_motifs`
     for the level f.
@@ -126,8 +168,14 @@ def templated_polymer(max_len: int = 7, food_len: int = 2, *, h: int = 2,
     ligations = tuple((index[a], index[b], index[a + b]) for a, b in pairs)
     drawn = []
     for a, b in pairs:
-        target = _target(a, b, h, orientation, rule)
-        drawn.append(frozenset() if target is None else frozenset(containing.get(target, ())))
+        target = _target(a, b, h, orientation, rule, mismatch)
+        if target is None:
+            drawn.append(frozenset())
+            continue
+        hits: set[int] = set()
+        for v in _variants(target, mismatch):
+            hits |= containing.get(v, set())
+        drawn.append(frozenset(hits))
     return BinaryPolymerNetwork(
         molecules=molecules, food=food, reactions=ligations + ligations,
         catalysts=tuple(drawn) + tuple(drawn), p=0.0, max_len=max_len, food_len=food_len,
@@ -203,10 +251,14 @@ def catalysis_motifs(net: BinaryPolymerNetwork, *, raf: bool = True) -> dict:
     ==========================  ==========================================================
 
     ⚠ ``self_reactions`` counts reactions, not products: a 6-mer has five junctions.
-    ⚠ Under the product rule a mutual pair is necessarily a sequence and its (reverse)
-    complement, so on a complete sequence set ``pairs`` is fixed by the set -- (molecules
-    of length >= 2h, minus the self-complementary) / 2 -- and is a CONTRAST for the nulls,
-    not a finding about the rule.
+    ⚠ Under the product rule AT ``mismatch`` 0 a mutual pair is necessarily a sequence and
+    its (reverse) complement, so on a complete sequence set ``pairs`` is fixed by the set
+    -- (molecules of length >= 2h, minus the self-complementary) / 2 -- and is a CONTRAST
+    for the nulls, not a finding about the rule. At ``mismatch`` k > 0 it is not: f is a
+    Hamming isometry, so a sequence and every neighbour of its (reverse) complement within
+    k are mutual, and odd-length self-templaters appear (complete ``max_len`` 7 set, ``h``
+    2: ``pairs`` 114 / 854 / 2,870 and ``self_products`` 12 / 36 / 68 at k 0 / 1 / 2). The
+    motif-matched null then plants that larger census.
     """
     cats = _pair_catalysts(net)
     n = len(cats)
