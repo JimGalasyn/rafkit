@@ -88,7 +88,7 @@ counted as **one** catalysed reaction, not two. Use `net.catalysis_level` — no
 | `binary_polymer` | Kauffman's K-BPM: catalysis by coin flip, with optional cleavage |
 | `complementary_polymer` | Serra & Villani's C-BPM: catalysis by active-site complementarity, not by coin flip |
 | `firing_disk_polymer` | their firing-disk construction — a chemistry *grown* from a seed, closed under its own production |
-| `templated_polymer` / `templated_catalysts` | templated ligation: a species catalyses `a + b -> ab` iff it carries the product's complement — nothing is drawn |
+| `templated_polymer` / `templated_catalysts` | templated ligation: a species catalyses `a + b -> ab` iff it carries the product's complement, exactly or within `mismatch` mispaired positions — nothing is drawn |
 | `degree_preserving_null` / `motif_matched_null` | same reactions, rewired catalysis — the nulls a structured chemistry is compared against |
 | `matched_f_random` / `matched_f_cbpm` | the K-BPM and C-BPM at a structured chemistry's catalysis level |
 | `catalysis_motifs` | what a chemistry and its nulls are compared on |
@@ -138,13 +138,21 @@ cleavage carries its ligation's templates, so a template changes a reversible re
 rate and never its equilibrium. `templated_catalysts` is the same rule as a pure function
 over whatever strands exist, for a simulator that holds explicit strands.
 
+Both take `mismatch` (default 0, every existing network bit-identical): **the error
+channel**. A strand templates a ligation if it contains a string within Hamming distance
+`mismatch` of the exact target — the product's complement with up to that many mispaired
+positions, anywhere in the window. The catalyst set at `mismatch` k is a superset of the one
+at k − 1, and the rule attaches no penalty to a mispaired template: that is the consumer's
+business, which takes the exact set and the sloppy set and weights the difference. ⚠ The
+returned set carries no distance, so a per-shell penalty differences the sets at each k.
+
 Sized on the complete `max_len` 7 set, the two rules behave very differently, and the
 numbers are pinned as known answers:
 
 | | |
 |---|---|
 | junction rule, `h` ≤ 2 | **saturates** — every eligible reaction templated by 194 or 46 species, f = 978 and 142 against ~5 for a random chemistry at the RAF threshold: a uniform speed-up with no specificity left |
-| product rule, `h` 2 | f = 12.9, with the template count *falling* with product length — 46 for a 4-mer, exactly one for a 7-mer, its own complement |
+| product rule, `h` 2 | f = 12.9, with the template count *falling* with product length — 46 for a 4-mer, exactly one for a 7-mer, its own complement. That is the `mismatch` 0 profile; the error channel flattens it fast (f 12.9 → 73.9 → 188.8 at `mismatch` 0 / 1 / 2, the 7-mer's one template becoming 8 and then 29) while eligibility, and so reach, do not move |
 | either rule, `h` 3 | the **maximal RAF is empty**: templated reactions need reactants of length ≥ `h`, and only untemplated reactions make those from a food set shorter than `h` |
 
 The last row is the one to remember. `max_raf` remains the right question about closure
@@ -557,6 +565,19 @@ CatReNet too.
 - Matsubara, Ameta, Thutupalli, Nghe & Krishna, "Conditions for Darwinian evolution in
   compartmentalized autocatalytic reaction networks," arXiv:2211.03155 — the analytic
   benchmark behind `rafkit.dilution`.
+- Kauffman, "Autocatalytic sets of proteins," *J. Theor. Biol.* 119(1), 1 (1986) — the
+  binary polymer model behind `binary_polymer`.
+- Gillespie, "Exact stochastic simulation of coupled chemical reactions," *J. Phys. Chem.*
+  81(25), 2340 (1977) — the direct method behind `rafkit.gillespie`.
+- Hordijk, Naylor, Krasnogor & Fellermann, "Population Dynamics of Autocatalytic Sets in a
+  Compartmentalized Spatial World," *Life* 8(3), 33 (2018) — the transport rule behind
+  `rafkit.permeation`.
+- Kosc, Kuperberg, Rajon & Charlat, "Thermodynamic consistency of autocatalytic cycles,"
+  *PNAS* 122(18), e2421274122 (2025) — the external pass/fail anchor behind
+  `rafkit.autocatalysis`.
+- Chodak & Heiner, "Spike — Reproducible Simulation Experiments with Configuration File
+  Branching," *Computational Methods in Systems Biology* (CMSB 2019), LNCS 11773 — the
+  simulator `to_andl` is calibrated against.
 
 ## License
 
