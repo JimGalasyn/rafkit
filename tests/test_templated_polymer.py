@@ -453,3 +453,20 @@ def test_mismatch_negative_refused():
     from rafkit.templated_polymer import templated_polymer
     with pytest.raises(ValueError, match="mispaired"):
         templated_polymer(max_len=4, mismatch=-1)
+
+
+def test_mismatch_validated_before_eligibility():
+    """PR 25 review, defect 1: a bad ``mismatch`` once raised only on the ELIGIBLE path, so
+    an ineligible reaction (or a network with no eligible pair) accepted it silently; a
+    float raised TypeError from ``range``; a bool was taken as 0 or 1."""
+    import pytest
+    from rafkit.templated_polymer import templated_catalysts, templated_polymer
+    with pytest.raises(ValueError, match="mispaired"):
+        templated_catalysts("0", "0", ["00", "11"], mismatch=-1)         # ineligible at h 2
+    with pytest.raises(ValueError, match="mispaired"):
+        templated_polymer(max_len=4, h=3, mismatch=-1)                  # no eligible pair
+    for bad in (1.5, 1.0, True, False, "1", None):
+        with pytest.raises(ValueError, match="mispaired"):
+            templated_catalysts("00", "11", ["0011", "1100"], mismatch=bad)
+    # target rc("0011") = "0011"; "0111" is one off it, "1100" four off
+    assert templated_catalysts("00", "11", ["0011", "1100", "0111"], mismatch=1) == frozenset({0, 2})

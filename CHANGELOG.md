@@ -5,6 +5,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `templated_polymer` / `templated_catalysts` take `mismatch` (default 0, every existing network
+  bit-identical): the ERROR CHANNEL. A strand templates a ligation if it contains a string
+  within Hamming distance `mismatch` of the exact target. The catalyst set at k is a superset of
+  the one at k − 1; the penalty for a mispaired template is the consumer's, not the rule's; the
+  returned set carries no distance. ⚠ At `mismatch` > 0 `catalysis_motifs`' `pairs` is no
+  longer fixed by the sequence set (a sequence is mutual with every neighbour of its reverse
+  complement) and the product rule's specificity profile flattens (f 12.9 → 73.9 → 188.8 at k
+  0 / 1 / 2 on the complete `max_len` 7 set). (#25)
+
 ### Maintenance
 
 - v0.7.1's version DOI (`10.5281/zenodo.23198198`) recorded in `CITATION.cff`, with this line in
